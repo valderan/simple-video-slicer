@@ -25,6 +25,27 @@ TRANSLATIONS: Dict[str, Translation] = {
         "n/a",
     ),
     "browse": Translation("browse", "Обзор...", "Browse..."),
+    "metadata_button": Translation("metadata_button", "Метаинфо", "Metadata"),
+    "metadata_tooltip": Translation(
+        "metadata_tooltip",
+        "Показать подробную метаинформацию файла",
+        "Show detailed file metadata",
+    ),
+    "metadata_dialog_title": Translation(
+        "metadata_dialog_title",
+        "Метаинформация файла",
+        "File metadata",
+    ),
+    "metadata_file_label": Translation(
+        "metadata_file_label",
+        "Файл: {path}",
+        "File: {path}",
+    ),
+    "metadata_not_available": Translation(
+        "metadata_not_available",
+        "Метаинформация недоступна",
+        "Metadata is not available",
+    ),
     "output_label": Translation("output_label", "Выходная папка:", "Output directory:"),
     "segment_table": Translation("segment_table", "Сегменты", "Segments"),
     "add_segment": Translation("add_segment", "Добавить сегмент", "Add segment"),
@@ -170,6 +191,14 @@ Additional:
     ),
     "save_segments": Translation("save_segments", "Сохранить список", "Save list"),
     "load_segments": Translation("load_segments", "Загрузить список", "Load list"),
+    "bulk_create_button": Translation(
+        "bulk_create_button", "Создать список", "Create list"
+    ),
+    "bulk_create_tooltip": Translation(
+        "bulk_create_tooltip",
+        "Создать сегменты по текстовому описанию",
+        "Generate segments from a text description",
+    ),
     "tooltip_save_segments": Translation(
         "tooltip_save_segments",
         "Сохранить сегменты в JSON",
@@ -209,6 +238,92 @@ Additional:
         "segments_load_error",
         "Не удалось загрузить список сегментов",
         "Failed to load segment list",
+    ),
+    "bulk_create_title": Translation(
+        "bulk_create_title",
+        "Создать список сегментов",
+        "Create segment list",
+    ),
+    "bulk_create_description": Translation(
+        "bulk_create_description",
+        (
+            "Введите по одному сегменту в строке, например: 00:30 - Вступление."
+            " Время указывается в формате HH:MM:SS или MM:SS."
+        ),
+        (
+            "Enter one segment per line, e.g. 00:30 - Intro."
+            " Use HH:MM:SS or MM:SS time format."
+        ),
+    ),
+    "bulk_create_placeholder": Translation(
+        "bulk_create_placeholder",
+        "0:00 - Введение\n0:30 - Основная часть\n1:45 - Завершение",
+        "0:00 - Introduction\n0:30 - Main part\n1:45 - Wrap-up",
+    ),
+    "bulk_create_error_empty": Translation(
+        "bulk_create_error_empty",
+        "Введите хотя бы одну строку",
+        "Enter at least one line",
+    ),
+    "bulk_create_error_format": Translation(
+        "bulk_create_error_format",
+        "Строка {line} должна содержать время и название через тире",
+        "Line {line} must contain time and title separated by a dash",
+    ),
+    "bulk_create_error_title": Translation(
+        "bulk_create_error_title",
+        "Строка {line} не содержит названия сегмента",
+        "Line {line} is missing the segment title",
+    ),
+    "bulk_create_error_time": Translation(
+        "bulk_create_error_time",
+        "Некорректное время в строке {line}",
+        "Invalid time value on line {line}",
+    ),
+    "bulk_create_error_order": Translation(
+        "bulk_create_error_order",
+        "Время в строке {line} должно быть больше предыдущего",
+        "Time on line {line} must be greater than the previous one",
+    ),
+    "bulk_create_error_negative": Translation(
+        "bulk_create_error_negative",
+        "Время в строке {line} не может быть отрицательным",
+        "Time on line {line} cannot be negative",
+    ),
+    "bulk_create_error_over_duration": Translation(
+        "bulk_create_error_over_duration",
+        "Время в строке {line} выходит за пределы длительности видео",
+        "Time on line {line} exceeds the video duration",
+    ),
+    "bulk_create_error_last_segment": Translation(
+        "bulk_create_error_last_segment",
+        "Последний сегмент не может начинаться у конца видео",
+        "The last segment cannot start at the end of the video",
+    ),
+    "bulk_create_no_file": Translation(
+        "bulk_create_no_file",
+        "Сначала выберите входной видеофайл",
+        "Select an input video file first",
+    ),
+    "bulk_create_confirm_title": Translation(
+        "bulk_create_confirm_title",
+        "Создать сегменты по списку",
+        "Create segments from list",
+    ),
+    "bulk_create_confirm_text": Translation(
+        "bulk_create_confirm_text",
+        "Будет создано сегментов: {count}. Продолжить?",
+        "Segments to create: {count}. Continue?",
+    ),
+    "bulk_create_log": Translation(
+        "bulk_create_log",
+        "Сегменты созданы из списка ({count}).",
+        "Segments created from text list ({count}).",
+    ),
+    "bulk_create_status": Translation(
+        "bulk_create_status",
+        "Готово: создано сегментов — {count}",
+        "Done: {count} segments created",
     ),
     "language_menu": Translation("language_menu", "Язык", "Language"),
     "language_ru": Translation("language_ru", "Русский", "Russian"),

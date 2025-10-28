@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from ..models.segment import Segment
 from ..utils.time_parser import format_time, parse_time
@@ -16,6 +16,8 @@ class SegmentDialog(QtWidgets.QDialog):
         parent: QtWidgets.QWidget | None,
         translator: Translator,
         segment: Segment | None = None,
+        *,
+        duration: float | None = None,
     ) -> None:
         super().__init__(parent)
         self.translator = translator
@@ -23,6 +25,10 @@ class SegmentDialog(QtWidgets.QDialog):
         self.setModal(True)
 
         self.segment = replace(segment) if segment else Segment(start=0.0)
+        self._duration = duration if duration and duration > 0 else None
+        self._duration_millis = (
+            int(round(self._duration * 1000)) if self._duration is not None else None
+        )
 
         self.filename_edit = QtWidgets.QLineEdit(self.segment.filename or "")
         start_value = (
@@ -34,6 +40,13 @@ class SegmentDialog(QtWidgets.QDialog):
         self.end_edit = QtWidgets.QLineEdit(
             "" if self.segment.end is None else format_time(self.segment.end)
         )
+        self.start_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.end_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self._configure_sliders()
+        self.start_slider.valueChanged.connect(self._on_start_slider_changed)
+        self.end_slider.valueChanged.connect(self._on_end_slider_changed)
+        self.start_edit.editingFinished.connect(self._sync_start_slider_from_text)
+        self.end_edit.editingFinished.connect(self._sync_end_slider_from_text)
         self.format_combo = QtWidgets.QComboBox()
         self.format_combo.addItems(["mp4", "mkv", "avi", "webm", "mov", "flv"])
         if self.segment.container:
@@ -71,8 +84,22 @@ class SegmentDialog(QtWidgets.QDialog):
 
         form_layout = QtWidgets.QFormLayout()
         form_layout.addRow(self.translator.tr("filename"), self.filename_edit)
-        form_layout.addRow(self.translator.tr("start_time"), self.start_edit)
-        form_layout.addRow(self.translator.tr("end_time"), self.end_edit)
+
+        start_container = QtWidgets.QWidget()
+        start_container_layout = QtWidgets.QVBoxLayout(start_container)
+        start_container_layout.setContentsMargins(0, 0, 0, 0)
+        start_container_layout.setSpacing(4)
+        start_container_layout.addWidget(self.start_edit)
+        start_container_layout.addWidget(self.start_slider)
+        form_layout.addRow(self.translator.tr("start_time"), start_container)
+
+        end_container = QtWidgets.QWidget()
+        end_container_layout = QtWidgets.QVBoxLayout(end_container)
+        end_container_layout.setContentsMargins(0, 0, 0, 0)
+        end_container_layout.setSpacing(4)
+        end_container_layout.addWidget(self.end_edit)
+        end_container_layout.addWidget(self.end_slider)
+        form_layout.addRow(self.translator.tr("end_time"), end_container)
         form_layout.addRow(self.translator.tr("format"), self.format_combo)
         form_layout.addRow(self.translator.tr("convert"), self.convert_checkbox)
 
@@ -90,6 +117,8 @@ class SegmentDialog(QtWidgets.QDialog):
 
         self._retranslate_ui()
         self._update_conversion_state(self.convert_checkbox.isChecked())
+        self._sync_start_slider_from_text()
+        self._sync_end_slider_from_text()
 
     def _retranslate_ui(self) -> None:
         self.setWindowTitle(self.translator.tr("dialog_title"))
@@ -109,6 +138,75 @@ class SegmentDialog(QtWidgets.QDialog):
 
     def _update_conversion_state(self, enabled: bool) -> None:
         self.conversion_group.setEnabled(enabled)
+
+    def _configure_sliders(self) -> None:
+        for slider in (self.start_slider, self.end_slider):
+            slider.setEnabled(self._duration_millis is not None)
+            slider.setMinimum(0)
+            if self._duration_millis is not None:
+                slider.setMaximum(self._duration_millis)
+            else:
+                slider.setMaximum(0)
+
+        if self._duration_millis is not None:
+            start_value = max(
+                0,
+                min(self._duration_millis, int(round(self.segment.start * 1000))),
+            )
+            self.start_slider.setValue(start_value)
+            if self.segment.end is not None:
+                end_value = int(round(self.segment.end * 1000))
+            else:
+                end_value = self._duration_millis
+            end_value = max(0, min(self._duration_millis, end_value))
+            self.end_slider.setValue(end_value)
+
+    def _on_start_slider_changed(self, value: int) -> None:
+        if self._duration_millis is None:
+            return
+        seconds = value / 1000
+        self.start_edit.setText(format_time(seconds))
+
+    def _on_end_slider_changed(self, value: int) -> None:
+        if self._duration_millis is None:
+            return
+        seconds = value / 1000
+        self.end_edit.setText(format_time(seconds))
+
+    def _sync_start_slider_from_text(self) -> None:
+        if self._duration_millis is None:
+            return
+        text = self.start_edit.text().strip()
+        if not text:
+            return
+        try:
+            seconds = parse_time(text)
+        except ValueError:
+            return
+        value = int(round(seconds * 1000))
+        value = max(0, min(self._duration_millis, value))
+        self.start_slider.blockSignals(True)
+        self.start_slider.setValue(value)
+        self.start_slider.blockSignals(False)
+
+    def _sync_end_slider_from_text(self) -> None:
+        if self._duration_millis is None:
+            return
+        text = self.end_edit.text().strip()
+        if not text:
+            self.end_slider.blockSignals(True)
+            self.end_slider.setValue(self._duration_millis)
+            self.end_slider.blockSignals(False)
+            return
+        try:
+            seconds = parse_time(text)
+        except ValueError:
+            return
+        value = int(round(seconds * 1000))
+        value = max(0, min(self._duration_millis, value))
+        self.end_slider.blockSignals(True)
+        self.end_slider.setValue(value)
+        self.end_slider.blockSignals(False)
 
     def get_segment(self) -> Segment:
         start_time = parse_time(self.start_edit.text())
