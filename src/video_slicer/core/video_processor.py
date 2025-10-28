@@ -20,9 +20,9 @@ class VideoProcessor:
 
     def slice_segments(self, segments: Iterable[Segment]) -> None:
         for segment in segments:
-            self._process_segment(segment)
+            self.process_segment(segment)
 
-    def _process_segment(self, segment: Segment) -> None:
+    def process_segment(self, segment: Segment) -> None:
         output_path = segment.output_path(
             self.output_dir, default_ext=self.input_file.suffix
         )
@@ -39,9 +39,9 @@ class VideoProcessor:
         audio_codec = segment.audio_codec or "copy"
         args.extend(["-c:v", video_codec])
         args.extend(["-c:a", audio_codec])
-        if video_codec != "copy":
+        if segment.convert and video_codec != "copy":
             args.extend(["-crf", str(segment.crf)])
-        if segment.extra_args:
+        if segment.convert and segment.extra_args:
             args.extend(segment.extra_args.split())
         args.append(str(output_path))
 
