@@ -1,6 +1,7 @@
 """Главное окно приложения."""
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 from functools import partial
@@ -13,9 +14,16 @@ from ..core.segment_manager import SegmentManager
 from ..core.video_processor import VideoProcessor
 from ..models.segment import Segment
 from ..utils import ffmpeg_helper, validators
-from ..utils.time_parser import format_time
+from ..utils.settings import (
+    AppSettings,
+    SettingsManager,
+    default_log_file,
+    detect_system_language,
+)
+from ..utils.time_parser import format_time, parse_time
 from .preview_dialog import PreviewDialog
 from .segment_dialog import SegmentDialog
+from .settings_dialog import SettingsDialog
 from .translations import Translator
 
 logger = logging.getLogger(__name__)
@@ -24,43 +32,96 @@ logger = logging.getLogger(__name__)
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.translator = Translator("ru")
+        self.settings_manager = SettingsManager()
+        self.app_settings: AppSettings = self.settings_manager.load()
+        if not self.app_settings.language:
+            self.app_settings.language = detect_system_language()
+            self.settings_manager.save(self.app_settings)
+
+        self.translator = Translator(self.app_settings.language or "en")
         self.segment_manager = SegmentManager()
         self.input_file: Path | None = None
         self.output_dir: Path | None = None
         self._file_info: dict[str, object] | None = None
         self._stop_requested = False
+        self._log_file_handler: logging.Handler | None = None
 
         self.setWindowTitle("SVS - Simple Video Slicer")
         self.resize(900, 600)
+        self.setWindowIcon(self._create_app_icon())
 
         self._create_actions()
         self._create_menu()
         self._create_widgets()
         self._create_status_bar()
+        self._apply_theme(self.app_settings.theme)
+        self._apply_ffmpeg_path()
+        self._configure_file_logging()
         self.retranslate_ui()
 
-    def _create_actions(self) -> None:
-        self.help_action = QtGui.QAction()
-        self.help_action.triggered.connect(self.show_help)
+    def _create_app_icon(self) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(256, 256)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
-        self.lang_ru_action = QtGui.QAction(checkable=True)
-        self.lang_ru_action.triggered.connect(lambda: self.set_language("ru"))
-        self.lang_en_action = QtGui.QAction(checkable=True)
-        self.lang_en_action.triggered.connect(lambda: self.set_language("en"))
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        gradient = QtGui.QLinearGradient(0, 0, 0, 256)
+        gradient.setColorAt(0, QtGui.QColor("#3f51b5"))
+        gradient.setColorAt(1, QtGui.QColor("#1a237e"))
+        painter.fillRect(pixmap.rect(), gradient)
+
+        body_rect = pixmap.rect().adjusted(40, 40, -40, -40)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff"), 8))
+        painter.setBrush(QtGui.QColor(0, 0, 0, 90))
+        painter.drawRoundedRect(body_rect, 28, 28)
+
+        hole_brush = QtGui.QBrush(QtGui.QColor("#ffffff"))
+        hole_radius = 10
+        x_positions = [body_rect.left() + 28 + i * ((body_rect.width() - 56) / 4) for i in range(5)]
+        for x in x_positions:
+            for y in (body_rect.top() + 22, body_rect.bottom() - 22):
+                painter.setBrush(hole_brush)
+                painter.drawEllipse(QtCore.QPoint(int(x), int(y)), hole_radius, hole_radius)
+
+        painter.setBrush(QtGui.QColor("#ffeb3b"))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#ffeb3b"), 6))
+        triangle = QtGui.QPolygon(
+            [
+                QtCore.QPoint(body_rect.left() + body_rect.width() // 3, body_rect.top() + 40),
+                QtCore.QPoint(
+                    body_rect.left() + body_rect.width() // 3,
+                    body_rect.bottom() - 40,
+                ),
+                QtCore.QPoint(
+                    body_rect.right() - body_rect.width() // 4,
+                    body_rect.center().y(),
+                ),
+            ]
+        )
+        painter.drawPolygon(triangle)
+        painter.end()
+
+        return QtGui.QIcon(pixmap)
+
+    def _create_actions(self) -> None:
+        self.settings_action = QtGui.QAction()
+        self.settings_action.triggered.connect(self.open_settings)
+
+        self.manual_action = QtGui.QAction()
+        self.manual_action.triggered.connect(self.show_manual)
+
+        self.about_action = QtGui.QAction()
+        self.about_action.triggered.connect(self.show_about)
 
     def _create_menu(self) -> None:
         menubar = self.menuBar()
-        self.help_menu = menubar.addMenu("")
-        self.help_menu.addAction(self.help_action)
+        self.settings_menu = menubar.addMenu("")
+        self.settings_menu.addAction(self.settings_action)
 
-        self.language_menu = menubar.addMenu("")
-        language_group = QtGui.QActionGroup(self)
-        language_group.addAction(self.lang_ru_action)
-        language_group.addAction(self.lang_en_action)
-        self.language_menu.addAction(self.lang_ru_action)
-        self.language_menu.addAction(self.lang_en_action)
-        self.lang_ru_action.setChecked(True)
+        self.help_menu = menubar.addMenu("")
+        self.help_menu.addAction(self.manual_action)
+        self.help_menu.addAction(self.about_action)
 
     def _create_widgets(self) -> None:
         central = QtWidgets.QWidget()
@@ -120,11 +181,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.duplicate_button.clicked.connect(self.duplicate_segment)
         self.preview_button = QtWidgets.QPushButton()
         self.preview_button.clicked.connect(self.preview_segment)
+        self.save_button = QtWidgets.QPushButton()
+        self.save_button.clicked.connect(self.save_segments_to_file)
+        self.load_button = QtWidgets.QPushButton()
+        self.load_button.clicked.connect(self.load_segments_from_file)
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.remove_button)
         button_layout.addWidget(self.duplicate_button)
         button_layout.addWidget(self.preview_button)
+        button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.load_button)
         button_layout.addStretch()
 
         self.progress_info_label = QtWidgets.QLabel()
@@ -187,6 +254,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.duplicate_button.setToolTip(self.translator.tr("tooltip_duplicate"))
         self.preview_button.setText(self.translator.tr("preview"))
         self.preview_button.setToolTip(self.translator.tr("tooltip_preview"))
+        self.save_button.setText(self.translator.tr("save_segments"))
+        self.save_button.setToolTip(self.translator.tr("tooltip_save_segments"))
+        self.load_button.setText(self.translator.tr("load_segments"))
+        self.load_button.setToolTip(self.translator.tr("tooltip_load_segments"))
         self.process_button.setText(self.translator.tr("process"))
         self.process_button.setToolTip(self.translator.tr("tooltip_process"))
         self.stop_button.setText(self.translator.tr("stop"))
@@ -197,11 +268,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_label.setText(self.translator.tr("progress_label"))
         self.progress_info_label.setText(self.translator.tr("progress_idle"))
         self.log_label.setText(self.translator.tr("log_label"))
+        self.settings_menu.setTitle(self.translator.tr("settings_menu"))
+        self.settings_action.setText(self.translator.tr("settings_title"))
         self.help_menu.setTitle(self.translator.tr("help_menu"))
-        self.help_action.setText(self.translator.tr("help_manual"))
-        self.language_menu.setTitle(self.translator.tr("language_menu"))
-        self.lang_ru_action.setText(self.translator.tr("language_ru"))
-        self.lang_en_action.setText(self.translator.tr("language_en"))
+        self.manual_action.setText(self.translator.tr("help_manual"))
+        self.about_action.setText(self.translator.tr("help_about"))
         self.status_bar.showMessage(self.translator.tr("status_ready"))
         self._update_table_headers()
         if self._file_info:
@@ -225,26 +296,83 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.table.setHorizontalHeaderItem(idx, QtWidgets.QTableWidgetItem(text))
 
     def set_language(self, language: str) -> None:
+        if language not in {"ru", "en"}:
+            return
+        self.app_settings.language = language
         self.translator.set_language(language)
-        self.lang_ru_action.setChecked(language == "ru")
-        self.lang_en_action.setChecked(language == "en")
+        self.settings_manager.save(self.app_settings)
         self.retranslate_ui()
+        self._refresh_table()
 
-    def show_help(self) -> None:
+    def open_settings(self) -> None:
+        dialog = SettingsDialog(self, self.translator, self.app_settings)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        updated = dialog.get_settings()
+        if not updated.language:
+            updated.language = detect_system_language()
+
+        language_changed = updated.language != self.app_settings.language
+        theme_changed = updated.theme != self.app_settings.theme
+        ffmpeg_changed = updated.ffmpeg_path != self.app_settings.ffmpeg_path
+        logging_changed = (
+            updated.log_to_file != self.app_settings.log_to_file
+            or updated.log_file_path != self.app_settings.log_file_path
+        )
+
+        self.app_settings = updated
+
+        if language_changed:
+            self.set_language(updated.language or "en")
+
+        if theme_changed:
+            self._apply_theme(self.app_settings.theme)
+
+        if ffmpeg_changed:
+            self._apply_ffmpeg_path()
+
+        if logging_changed:
+            self._configure_file_logging()
+        self.settings_manager.save(self.app_settings)
+
+    def show_manual(self) -> None:
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(self.translator.tr("help_manual"))
+        layout = QtWidgets.QVBoxLayout(dialog)
+        text = QtWidgets.QTextBrowser()
+        text.setPlainText(self.translator.tr("help_manual_content"))
+        text.setReadOnly(True)
+        text.setMinimumSize(500, 400)
+        layout.addWidget(text)
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Close
+        )
+        close_button = button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        if close_button:
+            close_button.setText(self.translator.tr("preview_close"))
+        button_box.rejected.connect(dialog.reject)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
+        dialog.exec()
+
+    def show_about(self) -> None:
         QtWidgets.QMessageBox.information(
             self,
-            self.translator.tr("help_manual"),
-            "SVS - Simple Video Slicer\n\n"
-            "1. Выберите входной файл и выходную папку.\n"
-            "2. Добавьте сегменты, указав начало и конец.\n"
-            "3. Нажмите 'Запустить обработку' для запуска FFmpeg.",
+            self.translator.tr("help_about"),
+            self.translator.tr("about_text"),
         )
 
     def select_input_file(self) -> None:
+        start_dir = (
+            self.app_settings.last_input_dir
+            or (str(self.input_file.parent) if self.input_file else None)
+            or str(Path.home())
+        )
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             self.translator.tr("file_label"),
-            str(Path.home()),
+            start_dir,
             "Video Files (*.mp4 *.avi *.mkv *.webm *.mov *.flv *.wmv *.mpg *.mpeg *.m4v *.3gp)",
         )
         if file_path:
@@ -256,6 +384,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 info = self._probe_file(self.input_file)
                 self._file_info = info
                 self.file_info_label.setText(self._format_file_info(info))
+                self.app_settings.last_input_dir = str(self.input_file.parent)
+                self.settings_manager.save(self.app_settings)
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
@@ -264,16 +394,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.file_info_label.setText(str(exc))
 
     def select_output_dir(self) -> None:
+        start_dir = (
+            self.app_settings.last_output_dir
+            or (str(self.output_dir) if self.output_dir else None)
+            or str(Path.home())
+        )
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self,
             self.translator.tr("output_label"),
-            str(Path.home()),
+            start_dir,
         )
         if directory:
             try:
                 self.output_dir = validators.validate_output_dir(directory)
                 self.output_line.setText(str(self.output_dir))
                 logger.info("Выходная директория: %s", self.output_dir)
+                self.app_settings.last_output_dir = str(self.output_dir)
+                self.settings_manager.save(self.app_settings)
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
@@ -391,6 +528,137 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _collect_segments_from_table(self) -> List[Segment]:
         return [replace(segment) for segment in self.segment_manager.segments]
+
+    def save_segments_to_file(self) -> None:
+        default_dir = (
+            self.app_settings.last_output_dir
+            or self.app_settings.last_input_dir
+            or (str(self.output_dir) if self.output_dir else None)
+        )
+        if default_dir:
+            base_path = Path(default_dir)
+            if base_path.is_dir():
+                initial = base_path / "segments.json"
+            else:
+                initial = base_path
+        else:
+            initial = Path.home() / "segments.json"
+
+        filters = ";;".join(
+            [
+                self.translator.tr("segments_file_filter"),
+                self.translator.tr("all_files_filter"),
+            ]
+        )
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            self.translator.tr("save_segments"),
+            str(initial),
+            filters,
+        )
+        if not filename:
+            return
+
+        try:
+            payload = []
+            for segment in self.segment_manager.segments:
+                payload.append(
+                    {
+                        "start_time": format_time(segment.start),
+                        "end_time": ""
+                        if segment.end is None
+                        else format_time(segment.end),
+                        "filename": segment.filename or "",
+                        "format": segment.container,
+                        "convert": segment.convert,
+                        "video_codec": segment.video_codec,
+                        "audio_codec": segment.audio_codec,
+                        "crf": segment.crf,
+                        "extra_params": segment.extra_args,
+                    }
+                )
+            with open(filename, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            QtWidgets.QMessageBox.information(
+                self,
+                self.translator.tr("info"),
+                self.translator.tr("segments_save_success"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Не удалось сохранить список сегментов")
+            QtWidgets.QMessageBox.critical(
+                self,
+                self.translator.tr("error"),
+                f"{self.translator.tr('segments_save_error')}: {exc}",
+            )
+
+    def load_segments_from_file(self) -> None:
+        default_dir = (
+            self.app_settings.last_output_dir
+            or self.app_settings.last_input_dir
+            or (str(self.output_dir) if self.output_dir else None)
+        )
+        initial = default_dir or str(Path.home())
+        filters = ";;".join(
+            [
+                self.translator.tr("segments_file_filter"),
+                self.translator.tr("all_files_filter"),
+            ]
+        )
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            self.translator.tr("load_segments"),
+            initial,
+            filters,
+        )
+        if not filename:
+            return
+
+        try:
+            with open(filename, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, list):
+                raise ValueError("Invalid segments format")
+
+            self.segment_manager.clear()
+            for entry in data:
+                if not isinstance(entry, dict):
+                    continue
+                start_value = entry.get("start_time", "00:00:00")
+                end_value = entry.get("end_time")
+                start_time = parse_time(str(start_value))
+                end_time = parse_time(str(end_value)) if end_value else None
+                segment = Segment(
+                    start=start_time,
+                    end=end_time,
+                    filename=(entry.get("filename") or None),
+                    container=entry.get("format") or entry.get("container") or "mp4",
+                    convert=bool(entry.get("convert", False)),
+                    video_codec=entry.get("video_codec", "copy"),
+                    audio_codec=entry.get("audio_codec", "copy"),
+                    crf=int(entry.get("crf", 23)),
+                    extra_args=entry.get("extra_params")
+                    or entry.get("extra_args")
+                    or "",
+                )
+                if not segment.convert:
+                    segment.video_codec = "copy"
+                    segment.audio_codec = "copy"
+                    segment.extra_args = ""
+                self.segment_manager.add_segment(segment)
+            self._refresh_table()
+            QtWidgets.QMessageBox.information(
+                self,
+                self.translator.tr("info"),
+                self.translator.tr("segments_load_success"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Не удалось загрузить список сегментов")
+            QtWidgets.QMessageBox.critical(
+                self,
+                self.translator.tr("error"),
+                f"{self.translator.tr('segments_load_error')}: {exc}",
+            )
 
     def process_segments(self) -> None:
         if not self.input_file:
@@ -580,3 +848,55 @@ class MainWindow(QtWidgets.QMainWindow):
         if isinstance(value, str) and value.isdigit():
             return int(value)
         return None
+
+    def _apply_theme(self, theme: str) -> None:
+        app = QtWidgets.QApplication.instance()
+        if not app:
+            return
+        if theme == "dark":
+            palette = QtGui.QPalette()
+            palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(45, 45, 48))
+            palette.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(220, 220, 220))
+            palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(30, 30, 30))
+            palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor(45, 45, 48))
+            palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor(255, 255, 255))
+            palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtGui.QColor(45, 45, 48))
+            palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(230, 230, 230))
+            palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(60, 63, 65))
+            palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor(230, 230, 230))
+            palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor(255, 59, 48))
+            palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(98, 114, 164))
+            palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(255, 255, 255))
+            app.setPalette(palette)
+            app.setStyleSheet(
+                "QToolTip { color: #1e1e1e; background-color: #f5f5f5; border: 1px solid #333; }"
+            )
+        else:
+            app.setPalette(app.style().standardPalette())
+            app.setStyleSheet("")
+
+    def _apply_ffmpeg_path(self) -> None:
+        ffmpeg_helper.set_ffmpeg_paths(self.app_settings.ffmpeg_path)
+
+    def _configure_file_logging(self) -> None:
+        root_logger = logging.getLogger()
+        if self._log_file_handler:
+            root_logger.removeHandler(self._log_file_handler)
+            self._log_file_handler.close()
+            self._log_file_handler = None
+
+        if not self.app_settings.log_to_file:
+            return
+
+        path_str = self.app_settings.log_file_path or str(default_log_file())
+        path = Path(path_str).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(path, encoding="utf-8")
+        handler.setLevel(logging.INFO)
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+        self._log_file_handler = handler
+        self.app_settings.log_file_path = str(path)
+        self.settings_manager.save(self.app_settings)
+        logger.info("Включено сохранение журнала в файл: %s", path)
