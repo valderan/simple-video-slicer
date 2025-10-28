@@ -194,8 +194,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.remove_button.clicked.connect(self.remove_segment)
         self.duplicate_button = QtWidgets.QPushButton()
         self.duplicate_button.clicked.connect(self.duplicate_segment)
-        self.preview_button = QtWidgets.QPushButton()
-        self.preview_button.clicked.connect(self.preview_segment)
         self.save_button = QtWidgets.QPushButton()
         self.save_button.clicked.connect(self.save_segments_to_file)
         self.load_button = QtWidgets.QPushButton()
@@ -206,7 +204,6 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.remove_button)
         button_layout.addWidget(self.duplicate_button)
-        button_layout.addWidget(self.preview_button)
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.load_button)
         button_layout.addWidget(self.generate_button)
@@ -216,7 +213,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.edit_button,
             self.remove_button,
             self.duplicate_button,
-            self.preview_button,
             self.save_button,
             self.load_button,
             self.generate_button,
@@ -298,8 +294,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.remove_button.setToolTip(self.translator.tr("tooltip_remove"))
         self.duplicate_button.setText(self.translator.tr("duplicate_segment"))
         self.duplicate_button.setToolTip(self.translator.tr("tooltip_duplicate"))
-        self.preview_button.setText(self.translator.tr("preview"))
-        self.preview_button.setToolTip(self.translator.tr("tooltip_preview"))
         self.save_button.setText(self.translator.tr("save_segments"))
         self.save_button.setToolTip(self.translator.tr("tooltip_save_segments"))
         self.load_button.setText(self.translator.tr("load_segments"))
@@ -879,6 +873,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         entries = dialog.get_entries()
+        add_numbering = dialog.should_add_numbering()
+        include_description = dialog.should_include_description()
         try:
             segments_data = self._build_segments_from_entries(entries)
         except ValueError as exc:
@@ -903,6 +899,8 @@ class MainWindow(QtWidgets.QMainWindow):
             segments_data,
             "bulk_create_log",
             "bulk_create_status",
+            add_numbering=add_numbering,
+            include_description=include_description,
         )
 
     def process_segments(self) -> None:
@@ -1119,10 +1117,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._create_segments_from_chapters(chapters)
 
     def _build_segments_from_entries(
-        self, entries: list[tuple[float, str]]
-    ) -> list[tuple[float, float | None, str]]:
+        self, entries: list[tuple[float, str | None]]
+    ) -> list[tuple[float, float | None, str | None]]:
         duration = self._get_video_duration()
-        segments: list[tuple[float, float | None, str]] = []
+        segments: list[tuple[float, float | None, str | None]] = []
 
         for idx, (start, title) in enumerate(entries, start=1):
             if start < 0:
@@ -1207,9 +1205,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_generated_segments(
         self,
-        entries: list[tuple[float, float | None, str]],
+        entries: list[tuple[float, float | None, str | None]],
         log_key: str,
         status_key: str,
+        *,
+        add_numbering: bool = False,
+        include_description: bool = True,
     ) -> None:
         self.segment_manager.clear()
         default_container = (
@@ -1217,8 +1218,23 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.input_file and self.input_file.suffix
             else "mp4"
         )
-        for start, end, title in entries:
-            filename = self._sanitize_filename(title)
+        for idx, (start, end, title) in enumerate(entries, start=1):
+            description = (title or "").strip()
+            fallback_name = self._generate_default_segment_name(start)
+            parts: list[str] = []
+            if add_numbering:
+                parts.append(str(idx))
+            if include_description:
+                if not description:
+                    description = fallback_name
+                parts.append(description)
+            if not parts:
+                parts.append(fallback_name)
+
+            filename_source = "_".join(parts)
+            filename = self._sanitize_filename(filename_source)
+            if not filename:
+                filename = fallback_name
             segment = Segment(
                 start=start,
                 end=end,
@@ -1252,6 +1268,28 @@ class MainWindow(QtWidgets.QMainWindow):
             "chapters_created",
             "chapters_created_status",
         )
+
+    @staticmethod
+    def _generate_default_segment_name(start: float) -> str:
+        safe_start = max(0.0, start)
+        total_millis = int(round(safe_start * 1000))
+        millis = total_millis % 1000
+        total_seconds = total_millis // 1000
+        seconds = total_seconds % 60
+        total_minutes = total_seconds // 60
+        minutes = total_minutes % 60
+        hours = total_minutes // 60
+
+        parts: list[str] = []
+        if hours > 0:
+            parts.append(str(hours))
+            parts.append(f"{minutes:02d}")
+        else:
+            parts.append(str(minutes))
+        parts.append(f"{seconds:02d}")
+        if millis:
+            parts.append(f"{millis:03d}")
+        return "segment_" + "_".join(parts)
 
     @staticmethod
     def _sanitize_filename(value: str) -> str:

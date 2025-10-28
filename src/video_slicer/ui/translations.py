@@ -121,7 +121,7 @@ SVS - Simple Video Slicer помогает быстро нарезать вид�
  • Входной видеофайл – выберите исходное видео. После выбора появится информация о файле.
  • Выходная папка – каталог, куда будут сохраняться готовые сегменты.
  • Таблица сегментов – список всех фрагментов, которые будут вырезаны.
- • Кнопки управления – добавление, редактирование, удаление, дублирование и предпросмотр сегментов.
+ • Кнопки управления – добавление, редактирование, удаление и дублирование сегментов.
  • Прогресс и журнал – отображают текущее состояние обработки и сообщения FFmpeg.
 
 Добавление сегментов:
@@ -144,7 +144,7 @@ Main window:
  • Input video file – choose the source video. File information appears after selection.
  • Output directory – folder where the resulting segments are stored.
  • Segment table – list of all clips to be exported.
- • Control buttons – add, edit, delete, duplicate and preview segments.
+ • Control buttons – add, edit, delete and duplicate segments.
  • Progress and log – show the processing state and FFmpeg messages.
 
 Adding segments:
@@ -248,11 +248,14 @@ Additional:
         "bulk_create_description",
         (
             "Введите по одному сегменту в строке, например: 00:30 - Вступление."
-            " Время указывается в формате HH:MM:SS или MM:SS."
+            " Можно писать через тире, пробел или оставить только время для"
+            " автоматического имени. Время указывается в формате HH:MM:SS,"
+            " MM:SS или SS."
         ),
         (
             "Enter one segment per line, e.g. 00:30 - Intro."
-            " Use HH:MM:SS or MM:SS time format."
+            " Use a dash, a space, or only the time to auto-name segments."
+            " Supported time formats: HH:MM:SS, MM:SS or SS."
         ),
     ),
     "bulk_create_placeholder": Translation(
@@ -267,8 +270,8 @@ Additional:
     ),
     "bulk_create_error_format": Translation(
         "bulk_create_error_format",
-        "Строка {line} должна содержать время и название через тире",
-        "Line {line} must contain time and title separated by a dash",
+        "Строка {line} должна начинаться со времени",
+        "Line {line} must start with a time value",
     ),
     "bulk_create_error_title": Translation(
         "bulk_create_error_title",
@@ -324,6 +327,16 @@ Additional:
         "bulk_create_status",
         "Готово: создано сегментов — {count}",
         "Done: {count} segments created",
+    ),
+    "bulk_create_option_numbering": Translation(
+        "bulk_create_option_numbering",
+        "Добавлять нумерацию в начале имени файла",
+        "Add numbering at the beginning of filenames",
+    ),
+    "bulk_create_option_description": Translation(
+        "bulk_create_option_description",
+        "Включать описание в имена файлов",
+        "Include description in filenames",
     ),
     "language_menu": Translation("language_menu", "Язык", "Language"),
     "language_ru": Translation("language_ru", "Русский", "Russian"),
