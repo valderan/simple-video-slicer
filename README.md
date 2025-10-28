@@ -97,6 +97,12 @@ uv run black src tests
 uv run ruff check src tests
 ```
 
+## Сборка бинарных файлов
+Пошаговая инструкция по подготовке автономных бинарников для Linux, Windows и macOS доступна в [utils/BUILDING.md](utils/BUILDING.md).
+
+## Подготовка релиза
+Процесс обновления версии, ведения списка изменений и публикации релиза описан в [RELEASING.md](RELEASING.md).
+
 ### Структура проекта
 ```
 src/            исходный код приложения

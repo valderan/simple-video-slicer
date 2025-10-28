@@ -1,6 +1,6 @@
 [project]
 name = "video-slicer"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Desktop application for slicing video files"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -18,8 +18,12 @@ dev = [
     "pytest>=7.0",
     "black>=23.0",
     "ruff>=0.1.0",
+    "pyinstaller>=6.0",
 ]
 
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "video_slicer.__version__"}
