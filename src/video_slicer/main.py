@@ -6,7 +6,7 @@ import sys
 
 from PySide6 import QtWidgets
 
-from .ui.main_window import MainWindow
+from video_slicer.ui.main_window import MainWindow
 
 
 def configure_logging() -> None:
