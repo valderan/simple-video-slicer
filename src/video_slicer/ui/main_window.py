@@ -24,6 +24,7 @@ from ..utils.time_parser import format_time, parse_time
 from .bulk_segment_dialog import BulkSegmentDialog
 from .preview_dialog import PreviewDialog
 from .processing_worker import ProcessingWorker
+from .segment_batch_dialog import SegmentBatchDialog
 from .segment_dialog import SegmentDialog
 from .settings_dialog import SettingsDialog
 from .translations import Translator
@@ -52,6 +53,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._interface_locked = False
         self._processing_thread: QtCore.QThread | None = None
         self._processing_worker: ProcessingWorker | None = None
+        self._button_translation_keys: dict[QtWidgets.QAbstractButton, str] = {}
+        self._button_icon_map: dict[
+            QtWidgets.QAbstractButton, QtWidgets.QStyle.StandardPixmap
+        ] = {}
 
         self.setWindowTitle("Simple Video Slicer")
         self.resize(900, 600)
@@ -147,6 +152,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.metadata_button = QtWidgets.QPushButton()
         self.metadata_button.clicked.connect(self.show_metadata)
         self.metadata_button.setEnabled(False)
+        self._register_button_icon(
+            self.file_button, QtWidgets.QStyle.StandardPixmap.SP_DialogOpenButton
+        )
+        self._register_button_icon(
+            self.metadata_button, QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView
+        )
         file_layout.addWidget(self.file_label)
         file_layout.addWidget(self.file_line)
         file_layout.addWidget(self.file_button)
@@ -161,6 +172,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.output_line.setReadOnly(True)
         self.output_button = QtWidgets.QPushButton()
         self.output_button.clicked.connect(self.select_output_dir)
+        self._register_button_icon(
+            self.output_button, QtWidgets.QStyle.StandardPixmap.SP_DirIcon
+        )
         output_layout.addWidget(self.output_label)
         output_layout.addWidget(self.output_line)
         output_layout.addWidget(self.output_button)
@@ -170,7 +184,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
         self.table.setSelectionMode(
-            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
@@ -184,6 +198,7 @@ class MainWindow(QtWidgets.QMainWindow):
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.itemDoubleClicked.connect(self.edit_segment)
+        self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
         button_layout = QtWidgets.QHBoxLayout()
         self.add_button = QtWidgets.QPushButton()
@@ -200,6 +215,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.load_button.clicked.connect(self.load_segments_from_file)
         self.generate_button = QtWidgets.QPushButton()
         self.generate_button.clicked.connect(self.create_segments_from_text)
+        self.bulk_edit_button = QtWidgets.QPushButton()
+        self.bulk_edit_button.clicked.connect(self.bulk_edit_segments)
+        self.clear_button = QtWidgets.QPushButton()
+        self.clear_button.clicked.connect(self.clear_segments)
+        self._register_button_icon(
+            self.add_button, QtWidgets.QStyle.StandardPixmap.SP_FileDialogNewFolder
+        )
+        self._register_button_icon(
+            self.edit_button, QtWidgets.QStyle.StandardPixmap.SP_FileDialogDetailedView
+        )
+        self._register_button_icon(
+            self.remove_button, QtWidgets.QStyle.StandardPixmap.SP_TrashIcon
+        )
+        self._register_button_icon(
+            self.duplicate_button, QtWidgets.QStyle.StandardPixmap.SP_FileDialogListView
+        )
+        self._register_button_icon(
+            self.save_button, QtWidgets.QStyle.StandardPixmap.SP_DialogSaveButton
+        )
+        self._register_button_icon(
+            self.load_button, QtWidgets.QStyle.StandardPixmap.SP_DialogOpenButton
+        )
+        self._register_button_icon(
+            self.generate_button, QtWidgets.QStyle.StandardPixmap.SP_BrowserReload
+        )
+        self._register_button_icon(
+            self.bulk_edit_button, QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton
+        )
+        self._register_button_icon(
+            self.clear_button, QtWidgets.QStyle.StandardPixmap.SP_LineEditClearButton
+        )
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.remove_button)
@@ -207,6 +253,8 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.load_button)
         button_layout.addWidget(self.generate_button)
+        button_layout.addWidget(self.bulk_edit_button)
+        button_layout.addWidget(self.clear_button)
         button_layout.addStretch()
         self.segment_buttons = [
             self.add_button,
@@ -216,6 +264,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.save_button,
             self.load_button,
             self.generate_button,
+            self.bulk_edit_button,
+            self.clear_button,
         ]
 
         self.progress_info_label = QtWidgets.QLabel()
@@ -238,11 +288,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stop_button = QtWidgets.QPushButton()
         self.stop_button.clicked.connect(self.stop_processing)
         self.stop_button.setEnabled(False)
+        self.copy_log_button = QtWidgets.QPushButton()
+        self.copy_log_button.clicked.connect(self.copy_log_to_clipboard)
+        self._register_button_icon(
+            self.process_button, QtWidgets.QStyle.StandardPixmap.SP_MediaPlay
+        )
+        self._register_button_icon(
+            self.stop_button, QtWidgets.QStyle.StandardPixmap.SP_MediaStop
+        )
+        self._register_button_icon(
+            self.copy_log_button,
+            QtWidgets.QStyle.StandardPixmap.SP_FileDialogContentsView,
+        )
 
         process_buttons_layout = QtWidgets.QHBoxLayout()
         process_buttons_layout.addWidget(self.process_button)
         process_buttons_layout.addWidget(self.stop_button)
         process_buttons_layout.addStretch()
+        process_buttons_layout.addWidget(self.copy_log_button)
 
         layout.addLayout(file_layout)
         layout.addWidget(self.file_info_label)
@@ -277,33 +340,65 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_bar = QtWidgets.QStatusBar()
         self.setStatusBar(self.status_bar)
 
+    def _register_button_icon(
+        self,
+        button: QtWidgets.QAbstractButton,
+        icon_id: QtWidgets.QStyle.StandardPixmap,
+    ) -> None:
+        self._button_icon_map[button] = icon_id
+        button.setIcon(self.style().standardIcon(icon_id))
+        button.setIconSize(QtCore.QSize(20, 20))
+
+    def _update_button_icons(self) -> None:
+        style = self.style()
+        for button, icon_id in self._button_icon_map.items():
+            button.setIcon(style.standardIcon(icon_id))
+
+    def _set_button_key(self, button: QtWidgets.QAbstractButton, key: str) -> None:
+        self._button_translation_keys[button] = key
+
+    def _update_button_labels(self) -> None:
+        for button, key in self._button_translation_keys.items():
+            text = self.translator.tr(key)
+            if self.app_settings.use_icon_buttons:
+                button.setText("")
+            else:
+                button.setText(text)
+            button.setAccessibleName(text)
+
     def retranslate_ui(self) -> None:
         self.file_label.setText(self.translator.tr("file_label"))
-        self.file_button.setText(self.translator.tr("browse"))
-        self.metadata_button.setText(self.translator.tr("metadata_button"))
+        self._set_button_key(self.file_button, "browse")
+        self._set_button_key(self.metadata_button, "metadata_button")
         self.output_label.setText(self.translator.tr("output_label"))
-        self.output_button.setText(self.translator.tr("browse"))
+        self._set_button_key(self.output_button, "browse")
         self.file_button.setToolTip(self.translator.tr("tooltip_file"))
         self.output_button.setToolTip(self.translator.tr("tooltip_output"))
         self.metadata_button.setToolTip(self.translator.tr("metadata_tooltip"))
-        self.add_button.setText(self.translator.tr("add_segment"))
+        self._set_button_key(self.add_button, "add_segment")
         self.add_button.setToolTip(self.translator.tr("tooltip_add"))
-        self.edit_button.setText(self.translator.tr("edit_segment"))
+        self._set_button_key(self.edit_button, "edit_segment")
         self.edit_button.setToolTip(self.translator.tr("tooltip_edit"))
-        self.remove_button.setText(self.translator.tr("remove_segment"))
+        self._set_button_key(self.remove_button, "remove_segment")
         self.remove_button.setToolTip(self.translator.tr("tooltip_remove"))
-        self.duplicate_button.setText(self.translator.tr("duplicate_segment"))
+        self._set_button_key(self.duplicate_button, "duplicate_segment")
         self.duplicate_button.setToolTip(self.translator.tr("tooltip_duplicate"))
-        self.save_button.setText(self.translator.tr("save_segments"))
+        self._set_button_key(self.save_button, "save_segments")
         self.save_button.setToolTip(self.translator.tr("tooltip_save_segments"))
-        self.load_button.setText(self.translator.tr("load_segments"))
+        self._set_button_key(self.load_button, "load_segments")
         self.load_button.setToolTip(self.translator.tr("tooltip_load_segments"))
-        self.generate_button.setText(self.translator.tr("bulk_create_button"))
+        self._set_button_key(self.generate_button, "bulk_create_button")
         self.generate_button.setToolTip(self.translator.tr("bulk_create_tooltip"))
-        self.process_button.setText(self.translator.tr("process"))
+        self._set_button_key(self.process_button, "process")
         self.process_button.setToolTip(self.translator.tr("tooltip_process"))
-        self.stop_button.setText(self.translator.tr("stop"))
+        self._set_button_key(self.stop_button, "stop")
         self.stop_button.setToolTip(self.translator.tr("tooltip_stop"))
+        self._set_button_key(self.bulk_edit_button, "bulk_edit_segments")
+        self.bulk_edit_button.setToolTip(self.translator.tr("tooltip_bulk_edit"))
+        self._set_button_key(self.clear_button, "clear_segments")
+        self.clear_button.setToolTip(self.translator.tr("tooltip_clear_segments"))
+        self._set_button_key(self.copy_log_button, "copy_log")
+        self.copy_log_button.setToolTip(self.translator.tr("tooltip_copy_log"))
         self.file_line.setToolTip(self.file_line.text())
         self.output_line.setToolTip(self.output_line.text())
         self.table.setToolTip(self.translator.tr("segment_table"))
@@ -324,6 +419,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._file_info:
             self.file_info_label.setText(self._format_file_info(self._file_info))
         self._update_segment_controls_state()
+        self._update_button_labels()
 
     def _update_table_headers(self) -> None:
         headers = [
@@ -342,6 +438,49 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.table.setHorizontalHeaderItem(idx, QtWidgets.QTableWidgetItem(text))
 
+    def _on_table_selection_changed(self) -> None:
+        self._update_selection_controls()
+
+    def _selected_rows(self) -> List[int]:
+        selection = self.table.selectionModel()
+        if not selection:
+            return []
+        return sorted({index.row() for index in selection.selectedRows()})
+
+    def _select_rows(self, rows: List[int]) -> None:
+        selection = self.table.selectionModel()
+        if not selection:
+            return
+        selection.clearSelection()
+        for row in rows:
+            if 0 <= row < self.table.rowCount():
+                index = self.table.model().index(row, 0)
+                selection.select(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.Select
+                    | QtCore.QItemSelectionModel.SelectionFlag.Rows,
+                )
+
+    def _update_selection_controls(self, base_enabled: bool | None = None) -> None:
+        if base_enabled is None:
+            base_enabled = self.input_file is not None
+            central = self.centralWidget()
+            if central is not None and not central.isEnabled():
+                base_enabled = False
+        has_selection = bool(self._selected_rows())
+        if hasattr(self, "edit_button"):
+            self.edit_button.setEnabled(base_enabled and has_selection)
+        if hasattr(self, "remove_button"):
+            self.remove_button.setEnabled(base_enabled and has_selection)
+        if hasattr(self, "duplicate_button"):
+            self.duplicate_button.setEnabled(base_enabled and has_selection)
+        if hasattr(self, "bulk_edit_button"):
+            self.bulk_edit_button.setEnabled(base_enabled and has_selection)
+        if hasattr(self, "clear_button"):
+            self.clear_button.setEnabled(
+                base_enabled and bool(self.segment_manager.segments)
+            )
+
     def _update_segment_controls_state(self) -> None:
         enabled = self.input_file is not None
         central = self.centralWidget()
@@ -351,6 +490,7 @@ class MainWindow(QtWidgets.QMainWindow):
             button.setEnabled(enabled)
         if hasattr(self, "metadata_button"):
             self.metadata_button.setEnabled(enabled and self._probe_data is not None)
+        self._update_selection_controls(enabled)
 
     def set_language(self, language: str) -> None:
         if language not in {"ru", "en"}:
@@ -377,6 +517,9 @@ class MainWindow(QtWidgets.QMainWindow):
             updated.log_to_file != self.app_settings.log_to_file
             or updated.log_file_path != self.app_settings.log_file_path
         )
+        icon_mode_changed = (
+            updated.use_icon_buttons != self.app_settings.use_icon_buttons
+        )
 
         self.app_settings = updated
 
@@ -392,6 +535,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if logging_changed:
             self._configure_file_logging()
+        if icon_mode_changed:
+            self._update_button_labels()
+            self._refresh_table()
         self.settings_manager.save(self.app_settings)
 
     def show_manual(self) -> None:
@@ -623,22 +769,34 @@ class MainWindow(QtWidgets.QMainWindow):
                     "" if segment.end is None else format_time(segment.end),
                 )
                 self._refresh_table()
+                if self.segment_manager.segments:
+                    self._select_rows([len(self.segment_manager.segments) - 1])
+                self._update_selection_controls()
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
                 )
 
     def remove_segment(self) -> None:
-        row = self.table.currentRow()
-        if row >= 0:
+        rows = self._selected_rows()
+        if not rows:
+            return
+        for row in reversed(rows):
             self.segment_manager.remove_segment(row)
             logger.info("Удалён сегмент #%s", row + 1)
-            self._refresh_table()
+        self._refresh_table()
+        next_row = min(rows[0], self.table.rowCount() - 1)
+        if next_row >= 0:
+            self._select_rows([next_row])
+        else:
+            self._select_rows([])
+        self._update_selection_controls()
 
     def edit_segment(self) -> None:
-        row = self.table.currentRow()
-        if row < 0:
+        rows = self._selected_rows()
+        if not rows:
             return
+        row = rows[0]
         segment = self.segment_manager.get(row)
         if not segment:
             return
@@ -655,15 +813,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.segment_manager.update_segment(row, updated)
                 logger.info("Обновлён сегмент #%s", updated.index)
                 self._refresh_table()
+                if row < self.table.rowCount():
+                    self._select_rows([row])
+                self._update_selection_controls()
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
                 )
 
     def duplicate_segment(self) -> None:
-        row = self.table.currentRow()
-        if row < 0:
+        rows = self._selected_rows()
+        if not rows:
             return
+        row = rows[-1]
         segment = self.segment_manager.get(row)
         if not segment:
             return
@@ -672,6 +834,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self.segment_manager.insert_segment(row + 1, duplicate)
         logger.info("Дублирован сегмент #%s", row + 1)
         self._refresh_table()
+        if row + 1 < self.table.rowCount():
+            self._select_rows([row + 1])
+        self._update_selection_controls()
+
+    def bulk_edit_segments(self) -> None:
+        rows = self._selected_rows()
+        if not rows:
+            return
+        segments: List[Segment] = []
+        for row in rows:
+            segment = self.segment_manager.get(row)
+            if segment:
+                segments.append(segment)
+        if not segments:
+            return
+        dialog = SegmentBatchDialog(self, self.translator, segments)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+        (
+            container,
+            convert,
+            video_codec,
+            audio_codec,
+            crf,
+            extra_args,
+        ) = dialog.get_result()
+        for row, segment in zip(rows, segments):
+            if not segment:
+                continue
+            segment.container = container
+            segment.convert = convert
+            segment.video_codec = video_codec
+            segment.audio_codec = audio_codec
+            segment.crf = crf
+            segment.extra_args = extra_args
+        logger.info("Обновлены параметры %s сегментов", len(rows))
+        self._append_log(
+            self.translator.tr("bulk_edit_log").format(count=len(rows))
+        )
+        self._refresh_table()
+        self._select_rows(rows)
+        self._update_selection_controls()
 
     def preview_segment(self) -> None:
         if not self.input_file:
@@ -680,6 +884,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if row < 0:
             return
         self._show_preview_for_row(row)
+
+    def clear_segments(self) -> None:
+        if not self.segment_manager.segments:
+            return
+        self.segment_manager.clear()
+        logger.info("Список сегментов очищен")
+        self._refresh_table()
+        self._select_rows([])
+        self._update_selection_controls()
+        self._append_log(self.translator.tr("segments_cleared_log"))
 
     def _show_preview_for_row(self, row: int) -> None:
         segment = self.segment_manager.get(row)
@@ -690,7 +904,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _refresh_table(self) -> None:
         self.table.setRowCount(len(self.segment_manager.segments))
-        preview_text = self.translator.tr("preview_icon")
+        use_icons = self.app_settings.use_icon_buttons
+        preview_text = (
+            self.translator.tr("preview_icon")
+            if use_icons
+            else self.translator.tr("preview")
+        )
         default_container = "mp4"
         if self.input_file and self.input_file.suffix:
             default_container = self.input_file.suffix.lstrip(".") or default_container
@@ -721,9 +940,21 @@ class MainWindow(QtWidgets.QMainWindow):
                         | QtCore.Qt.ItemFlag.ItemIsEnabled
                     )
                 self.table.setItem(row, col, item)
-            preview_button = QtWidgets.QPushButton(preview_text)
+            preview_button = QtWidgets.QPushButton()
+            if use_icons:
+                preview_button.setIcon(
+                    self.style().standardIcon(
+                        QtWidgets.QStyle.StandardPixmap.SP_MediaPlay
+                    )
+                )
+                preview_button.setText("")
+            else:
+                preview_button.setText(preview_text)
+            preview_button.setToolTip(self.translator.tr("tooltip_preview"))
+            preview_button.setIconSize(QtCore.QSize(20, 20))
             preview_button.clicked.connect(partial(self._show_preview_for_row, row))
             self.table.setCellWidget(row, 6, preview_button)
+        self._update_selection_controls()
 
     def _collect_segments_from_table(self) -> List[Segment]:
         return [replace(segment) for segment in self.segment_manager.segments]
@@ -954,6 +1185,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._processing_worker.request_stop()
         self._append_log(self.translator.tr("processing_stop_requested"))
 
+    def copy_log_to_clipboard(self) -> None:
+        clipboard = QtGui.QGuiApplication.clipboard()
+        clipboard.setText(self.log_console.toPlainText())
+        self._append_log(self.translator.tr("log_copy_success"))
+
     def _start_processing_worker(self, segments: List[Segment]) -> None:
         if not self.input_file or not self.output_dir:
             return
@@ -966,6 +1202,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.input_file,
             self.output_dir,
             segments,
+            self.app_settings,
         )
         self._processing_worker.moveToThread(self._processing_thread)
         self._processing_thread.started.connect(self._processing_worker.run)
@@ -1386,6 +1623,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             app.setPalette(app.style().standardPalette())
             app.setStyleSheet("")
+        self._update_button_icons()
 
     def _apply_ffmpeg_path(self) -> None:
         ffmpeg_helper.set_ffmpeg_paths(self.app_settings.ffmpeg_path)

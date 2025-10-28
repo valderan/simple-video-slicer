@@ -8,6 +8,7 @@ from PySide6 import QtCore
 
 from ..core.video_processor import VideoProcessor
 from ..models.segment import Segment
+from ..utils.settings import AppSettings
 
 
 class ProcessingWorker(QtCore.QObject):
@@ -29,16 +30,22 @@ class ProcessingWorker(QtCore.QObject):
         input_file: Path,
         output_dir: Path,
         segments: Iterable[Segment],
+        settings: AppSettings,
     ) -> None:
         super().__init__()
         self._input_file = input_file
         self._output_dir = output_dir
         self._segments = list(segments)
         self._stop_requested = False
+        self._settings = settings.clone()
 
     @QtCore.Slot()
     def run(self) -> None:
-        processor = VideoProcessor(self._input_file, self._output_dir)
+        processor = VideoProcessor(
+            self._input_file,
+            self._output_dir,
+            settings=self._settings,
+        )
         total = len(self._segments)
         if total == 0:
             self.finished.emit()
