@@ -97,6 +97,12 @@ uv run black src tests
 uv run ruff check src tests
 ```
 
+## Binary builds
+Follow [utils/BUILDING.md](utils/BUILDING.md) for a step-by-step guide to produce standalone executables for Linux, Windows, and macOS.
+
+## Release preparation
+The release checklist (version bump, changelog update, tagging) is documented in [RELEASING.md](RELEASING.md).
+
 ### Project structure
 ```
 src/                 application source code
