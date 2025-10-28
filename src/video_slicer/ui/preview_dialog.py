@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..utils import ffmpeg_helper
+from ..utils.time_parser import format_time
 from .translations import Translator
 
 logger = logging.getLogger(__name__)
@@ -59,8 +60,9 @@ class PreviewDialog(QtWidgets.QDialog):
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             ))
+            formatted_time = format_time(self.start).split(".")[0]
             self.info_label.setText(
-                f"{self.translator.tr('start_time')}: {self.start:.2f} s"
+                f"{self.translator.tr('start_time')}: {formatted_time}"
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Ошибка при генерации предпросмотра")

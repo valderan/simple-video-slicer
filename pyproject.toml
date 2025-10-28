@@ -9,6 +9,9 @@ dependencies = [
     "ffmpeg-python>=0.2.0",
 ]
 
+[project.scripts]
+"video-slicer" = "video_slicer.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
