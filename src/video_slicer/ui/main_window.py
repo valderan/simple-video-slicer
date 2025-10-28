@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -45,8 +46,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._file_info: dict[str, object] | None = None
         self._stop_requested = False
         self._log_file_handler: logging.Handler | None = None
+        self._ffmpeg_available = True
+        self._interface_locked = False
 
-        self.setWindowTitle("SVS - Simple Video Slicer")
+        self.setWindowTitle("Simple Video Slicer")
         self.resize(900, 600)
         self.setWindowIcon(self._create_app_icon())
 
@@ -58,6 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_ffmpeg_path()
         self._configure_file_logging()
         self.retranslate_ui()
+        self._check_ffmpeg_availability(initial=True)
 
     def _create_app_icon(self) -> QtGui.QIcon:
         pixmap = QtGui.QPixmap(256, 256)
@@ -111,17 +115,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.manual_action = QtGui.QAction()
         self.manual_action.triggered.connect(self.show_manual)
 
+        self.download_ffmpeg_action = QtGui.QAction()
+        self.download_ffmpeg_action.triggered.connect(self.open_ffmpeg_download)
+
         self.about_action = QtGui.QAction()
         self.about_action.triggered.connect(self.show_about)
 
     def _create_menu(self) -> None:
         menubar = self.menuBar()
-        self.settings_menu = menubar.addMenu("")
-        self.settings_menu.addAction(self.settings_action)
-
-        self.help_menu = menubar.addMenu("")
-        self.help_menu.addAction(self.manual_action)
-        self.help_menu.addAction(self.about_action)
+        self.main_menu = menubar.addMenu("")
+        self.main_menu.addAction(self.settings_action)
+        self.main_menu.addAction(self.manual_action)
+        self.main_menu.addAction(self.download_ffmpeg_action)
+        self.main_menu.addSeparator()
+        self.main_menu.addAction(self.about_action)
 
     def _create_widgets(self) -> None:
         central = QtWidgets.QWidget()
@@ -193,6 +200,15 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.load_button)
         button_layout.addStretch()
+        self.segment_buttons = [
+            self.add_button,
+            self.edit_button,
+            self.remove_button,
+            self.duplicate_button,
+            self.preview_button,
+            self.save_button,
+            self.load_button,
+        ]
 
         self.progress_info_label = QtWidgets.QLabel()
         self.progress_label = QtWidgets.QLabel()
@@ -223,15 +239,31 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(file_layout)
         layout.addWidget(self.file_info_label)
         layout.addLayout(output_layout)
-        layout.addWidget(self.table)
-        layout.addLayout(button_layout)
-        layout.addLayout(progress_header_layout)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(self.log_label)
-        layout.addWidget(self.log_console)
+        table_container = QtWidgets.QWidget()
+        table_container_layout = QtWidgets.QVBoxLayout(table_container)
+        table_container_layout.setContentsMargins(0, 0, 0, 0)
+        table_container_layout.addWidget(self.table)
+        table_container_layout.addLayout(button_layout)
+        table_container_layout.addLayout(progress_header_layout)
+        table_container_layout.addWidget(self.progress_bar)
+
+        log_container = QtWidgets.QWidget()
+        log_layout = QtWidgets.QVBoxLayout(log_container)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.addWidget(self.log_label)
+        log_layout.addWidget(self.log_console)
+
+        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.main_splitter.addWidget(table_container)
+        self.main_splitter.addWidget(log_container)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(self.main_splitter)
         layout.addLayout(process_buttons_layout)
 
         self.setCentralWidget(central)
+        self._update_segment_controls_state()
 
     def _create_status_bar(self) -> None:
         self.status_bar = QtWidgets.QStatusBar()
@@ -268,15 +300,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_label.setText(self.translator.tr("progress_label"))
         self.progress_info_label.setText(self.translator.tr("progress_idle"))
         self.log_label.setText(self.translator.tr("log_label"))
-        self.settings_menu.setTitle(self.translator.tr("settings_menu"))
+        self.main_menu.setTitle(self.translator.tr("main_menu"))
         self.settings_action.setText(self.translator.tr("settings_title"))
-        self.help_menu.setTitle(self.translator.tr("help_menu"))
         self.manual_action.setText(self.translator.tr("help_manual"))
+        self.download_ffmpeg_action.setText(
+            self.translator.tr("menu_download_ffmpeg")
+        )
         self.about_action.setText(self.translator.tr("help_about"))
         self.status_bar.showMessage(self.translator.tr("status_ready"))
+        if not self._ffmpeg_available:
+            self.status_bar.showMessage(self.translator.tr("status_ffmpeg_missing"))
         self._update_table_headers()
         if self._file_info:
             self.file_info_label.setText(self._format_file_info(self._file_info))
+        self._update_segment_controls_state()
 
     def _update_table_headers(self) -> None:
         headers = [
@@ -294,6 +331,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 item.setText(text)
             else:
                 self.table.setHorizontalHeaderItem(idx, QtWidgets.QTableWidgetItem(text))
+
+    def _update_segment_controls_state(self) -> None:
+        enabled = self.input_file is not None
+        central = self.centralWidget()
+        if central is not None and not central.isEnabled():
+            enabled = False
+        for button in getattr(self, "segment_buttons", []):
+            button.setEnabled(enabled)
 
     def set_language(self, language: str) -> None:
         if language not in {"ru", "en"}:
@@ -331,6 +376,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if ffmpeg_changed:
             self._apply_ffmpeg_path()
+            self._check_ffmpeg_availability()
 
         if logging_changed:
             self._configure_file_logging()
@@ -356,12 +402,94 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(button_box)
         dialog.exec()
 
-    def show_about(self) -> None:
-        QtWidgets.QMessageBox.information(
-            self,
-            self.translator.tr("help_about"),
-            self.translator.tr("about_text"),
+    def open_ffmpeg_download(self) -> None:
+        QtGui.QDesktopServices.openUrl(
+            QtCore.QUrl("https://ffmpeg.org/download.html")
         )
+
+    def show_about(self) -> None:
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(self.translator.tr("help_about"))
+        dialog.setModal(True)
+        dialog.resize(420, 320)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        header_layout = QtWidgets.QHBoxLayout()
+        header_layout.setSpacing(16)
+
+        logo_label = QtWidgets.QLabel()
+        logo_path = Path(__file__).resolve().parent.parent / "logo.png"
+        pixmap = QtGui.QPixmap(str(logo_path))
+        if not pixmap.isNull():
+            logo_label.setPixmap(
+                pixmap.scaled(
+                    96,
+                    96,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            header_layout.addWidget(logo_label)
+
+        title_layout = QtWidgets.QVBoxLayout()
+        title_label = QtWidgets.QLabel("<b>Simple Video Slicer</b>")
+        title_font = title_label.font()
+        title_font.setPointSize(title_font.pointSize() + 2)
+        title_label.setFont(title_font)
+        title_layout.addWidget(title_label)
+
+        version_label = QtWidgets.QLabel(
+            self.translator.tr("about_version").format(version="0.1")
+        )
+        title_layout.addWidget(version_label)
+
+        author_label = QtWidgets.QLabel(
+            self.translator.tr("about_author").format(name="Vladimir Kundryukov")
+        )
+        title_layout.addWidget(author_label)
+
+        repo_label = QtWidgets.QLabel(
+            self.translator.tr("about_repo").format(
+                year="2025",
+                url="https://github.com/valderan/simple-video-slicer",
+            )
+        )
+        repo_label.setOpenExternalLinks(True)
+        title_layout.addWidget(repo_label)
+
+        title_layout.addStretch()
+        header_layout.addLayout(title_layout)
+        layout.addLayout(header_layout)
+
+        description = QtWidgets.QLabel(self.translator.tr("about_description"))
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        separator = QtWidgets.QFrame()
+        separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        separator.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        footer = QtWidgets.QLabel(self.translator.tr("about_tagline"))
+        footer.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        footer.setStyleSheet("color: #607d8b; font-style: italic;")
+        layout.addWidget(footer)
+
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Close
+        )
+        close_button = button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        if close_button:
+            close_button.setText(self.translator.tr("preview_close"))
+        button_box.rejected.connect(dialog.reject)
+        button_box.accepted.connect(dialog.accept)
+        layout.addWidget(button_box)
+
+        dialog.exec()
 
     def select_input_file(self) -> None:
         start_dir = (
@@ -380,10 +508,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 validators.validate_input_file(file_path)
                 self.input_file = Path(file_path)
                 self.file_line.setText(file_path)
+                self.file_line.setToolTip(file_path)
                 logger.info("Выбран входной файл: %s", file_path)
-                info = self._probe_file(self.input_file)
+                probe_data = ffmpeg_helper.probe_file(self.input_file)
+                info = self._extract_file_info(probe_data)
                 self._file_info = info
                 self.file_info_label.setText(self._format_file_info(info))
+                self._handle_metadata_chapters(probe_data)
                 self.app_settings.last_input_dir = str(self.input_file.parent)
                 self.settings_manager.save(self.app_settings)
             except Exception as exc:  # noqa: BLE001
@@ -392,6 +523,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 self._file_info = None
                 self.file_info_label.setText(str(exc))
+                self.file_line.clear()
+                self.file_line.setToolTip("")
+                self.input_file = None
+            finally:
+                self._update_segment_controls_state()
 
     def select_output_dir(self) -> None:
         start_dir = (
@@ -773,20 +909,14 @@ class MainWindow(QtWidgets.QMainWindow):
         timestamp = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
         self.log_console.appendPlainText(f"[{timestamp}] {message}")
 
-    def _probe_file(self, path: Path) -> dict[str, object]:
-        try:
-            data = ffmpeg_helper.probe_file(path)
-        except Exception:
-            logger.exception("Не удалось получить информацию о файле")
-            raise
-
+    def _extract_file_info(self, data: dict[str, object]) -> dict[str, object]:
         duration_raw = data.get("format", {}).get("duration")
         streams = data.get("streams", [])
         video_streams = [s for s in streams if s.get("codec_type") == "video"]
         audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
         video_info = video_streams[0] if video_streams else {}
         audio_info = audio_streams[0] if audio_streams else {}
-        duration_value = float(duration_raw) if duration_raw else None
+        duration_value = self._safe_float(duration_raw)
         width_raw = video_info.get("width")
         height_raw = video_info.get("height")
         width = self._safe_int(width_raw)
@@ -798,6 +928,113 @@ class MainWindow(QtWidgets.QMainWindow):
             "audio_codec": audio_info.get("codec_name"),
         }
         return info
+
+    def _handle_metadata_chapters(self, data: dict[str, object]) -> None:
+        raw_chapters = data.get("chapters")
+        if not isinstance(raw_chapters, list):
+            return
+
+        chapters: list[tuple[float, float | None, str]] = []
+        for index, entry in enumerate(raw_chapters, start=1):
+            if not isinstance(entry, dict):
+                continue
+            start_value = self._safe_float(entry.get("start_time"))
+            if start_value is None:
+                continue
+            end_value = self._safe_float(entry.get("end_time"))
+            if end_value is not None and end_value <= start_value:
+                end_value = None
+            tags = entry.get("tags") if isinstance(entry.get("tags"), dict) else {}
+            title = (
+                tags.get("title")
+                or tags.get("TITLE")
+                or f"Chapter {index:02d}"
+            )
+            chapters.append((start_value, end_value, str(title)))
+
+        if not chapters:
+            return
+
+        if not self._prompt_create_segments_from_chapters(chapters):
+            return
+
+        self._create_segments_from_chapters(chapters)
+
+    def _prompt_create_segments_from_chapters(
+        self, chapters: list[tuple[float, float | None, str]]
+    ) -> bool:
+        message = QtWidgets.QMessageBox(self)
+        message.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        message.setWindowTitle(self.translator.tr("chapters_detected_title"))
+        message.setText(
+            self.translator.tr("chapters_detected_text").format(count=len(chapters))
+        )
+        if self.segment_manager.segments:
+            message.setInformativeText(
+                self.translator.tr("chapters_replace_question")
+            )
+
+        details = []
+        for idx, (start, end, title) in enumerate(chapters, start=1):
+            start_text = format_time(start)
+            end_text = (
+                format_time(end)
+                if end is not None
+                else self.translator.tr("chapters_until_end")
+            )
+            details.append(f"{idx:02d}. {start_text} - {end_text} — {title}")
+        if details:
+            message.setDetailedText("\n".join(details))
+
+        message.setStandardButtons(
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No
+        )
+        yes_button = message.button(QtWidgets.QMessageBox.StandardButton.Yes)
+        if yes_button:
+            yes_button.setText(self.translator.tr("yes"))
+        no_button = message.button(QtWidgets.QMessageBox.StandardButton.No)
+        if no_button:
+            no_button.setText(self.translator.tr("no"))
+        return message.exec() == QtWidgets.QMessageBox.StandardButton.Yes
+
+    def _create_segments_from_chapters(
+        self, chapters: list[tuple[float, float | None, str]]
+    ) -> None:
+        self.segment_manager.clear()
+        default_container = (
+            self.input_file.suffix.lstrip(".")
+            if self.input_file and self.input_file.suffix
+            else "mp4"
+        )
+        for start, end, title in chapters:
+            filename = self._sanitize_filename(title)
+            segment = Segment(
+                start=start,
+                end=end,
+                filename=filename or None,
+                container=default_container,
+            )
+            self.segment_manager.add_segment(segment)
+        self._refresh_table()
+        self._append_log(
+            self.translator.tr("chapters_created").format(count=len(chapters))
+        )
+        if hasattr(self, "status_bar"):
+            self.status_bar.showMessage(
+                self.translator.tr("chapters_created_status").format(
+                    count=len(chapters)
+                )
+            )
+
+    @staticmethod
+    def _sanitize_filename(value: str) -> str:
+        cleaned = re.sub(r"[\\/:*?\"<>|]", "_", value)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = cleaned.replace(" ", "_")
+        cleaned = re.sub(r"_+", "_", cleaned)
+        cleaned = cleaned.strip("_.")
+        return cleaned[:80]
 
     def _format_file_info(self, info: dict[str, object]) -> str:
         duration_value = info.get("duration")
@@ -849,6 +1086,17 @@ class MainWindow(QtWidgets.QMainWindow):
             return int(value)
         return None
 
+    @staticmethod
+    def _safe_float(value: object) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        return None
+
     def _apply_theme(self, theme: str) -> None:
         app = QtWidgets.QApplication.instance()
         if not app:
@@ -877,6 +1125,40 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_ffmpeg_path(self) -> None:
         ffmpeg_helper.set_ffmpeg_paths(self.app_settings.ffmpeg_path)
+
+    def _set_interface_enabled(self, enabled: bool) -> None:
+        central = self.centralWidget()
+        if not central:
+            return
+        if central.isEnabled() == enabled and self._interface_locked == (not enabled):
+            return
+        central.setEnabled(enabled)
+        self._interface_locked = not enabled
+        if enabled:
+            self._update_segment_controls_state()
+
+    def _check_ffmpeg_availability(self, *, initial: bool = False) -> None:
+        try:
+            ffmpeg_helper.ensure_ffmpeg_available()
+        except FileNotFoundError as exc:
+            if self._ffmpeg_available:
+                logger.warning("FFmpeg не найден: %s", exc)
+                if hasattr(self, "log_console"):
+                    self._append_log(self.translator.tr("log_ffmpeg_missing"))
+            self._ffmpeg_available = False
+            self._set_interface_enabled(False)
+            if hasattr(self, "status_bar"):
+                self.status_bar.showMessage(self.translator.tr("status_ffmpeg_missing"))
+            return
+
+        if not self._ffmpeg_available:
+            logger.info("FFmpeg найден и готов к работе")
+            if hasattr(self, "log_console"):
+                self._append_log(self.translator.tr("log_ffmpeg_ready"))
+        self._ffmpeg_available = True
+        self._set_interface_enabled(True)
+        if hasattr(self, "status_bar") and not initial:
+            self.status_bar.showMessage(self.translator.tr("status_ready"))
 
     def _configure_file_logging(self) -> None:
         root_logger = logging.getLogger()

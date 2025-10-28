@@ -58,6 +58,7 @@ TRANSLATIONS: Dict[str, Translation] = {
         "Параметры конвертации",
         "Conversion settings",
     ),
+    "main_menu": Translation("main_menu", "Меню", "Menu"),
     "settings_menu": Translation("settings_menu", "Настройки", "Settings"),
     "settings_title": Translation("settings_title", "Настройки", "Settings"),
     "settings_language": Translation("settings_language", "Язык", "Language"),
@@ -85,9 +86,11 @@ TRANSLATIONS: Dict[str, Translation] = {
     ),
     "theme_light": Translation("theme_light", "Светлая", "Light"),
     "theme_dark": Translation("theme_dark", "Тёмная", "Dark"),
-    "help_menu": Translation("help_menu", "Справка", "Help"),
     "help_manual": Translation("help_manual", "Руководство пользователя", "User guide"),
     "help_about": Translation("help_about", "О программе", "About"),
+    "menu_download_ffmpeg": Translation(
+        "menu_download_ffmpeg", "Скачать FFmpeg", "Download FFmpeg"
+    ),
     "help_manual_content": Translation(
         "help_manual_content",
         """
@@ -137,10 +140,33 @@ Additional:
  • The "Save list" and "Load list" buttons store and restore segment presets in JSON format.
         """.strip(),
     ),
-    "about_text": Translation(
-        "about_text",
-        "SVS - Simple Video Slicer\nVladimir Kundryukov\nhttps://github.com/valderan/simple-video-slicer",
-        "SVS - Simple Video Slicer\nVladimir Kundryukov\nhttps://github.com/valderan/simple-video-slicer",
+    "about_version": Translation(
+        "about_version", "Версия {version}", "Version {version}"
+    ),
+    "about_author": Translation(
+        "about_author", "Автор: {name}", "Author: {name}"
+    ),
+    "about_repo": Translation(
+        "about_repo",
+        "© {year} <a href=\"{url}\">{url}</a>",
+        "© {year} <a href=\"{url}\">{url}</a>",
+    ),
+    "about_description": Translation(
+        "about_description",
+        (
+            "Современный инструмент для точной нарезки и подготовки видеоконтента."
+            " Поддерживает конвертацию, предпросмотр и экспорт пользовательских списков"
+            " сегментов."
+        ),
+        (
+            "A polished tool for precise video slicing and preparation."
+            " Includes conversion, preview, and reusable segment playlists."
+        ),
+    ),
+    "about_tagline": Translation(
+        "about_tagline",
+        "Создавайте идеальные клипы за считанные минуты",
+        "Create perfect clips in minutes",
     ),
     "save_segments": Translation("save_segments", "Сохранить список", "Save list"),
     "load_segments": Translation("load_segments", "Загрузить список", "Load list"),
@@ -188,6 +214,11 @@ Additional:
     "language_ru": Translation("language_ru", "Русский", "Russian"),
     "language_en": Translation("language_en", "Английский", "English"),
     "status_ready": Translation("status_ready", "Готово", "Ready"),
+    "status_ffmpeg_missing": Translation(
+        "status_ffmpeg_missing",
+        "FFmpeg не найден — укажите путь в настройках",
+        "FFmpeg not found — configure the path in settings",
+    ),
     "status_processing": Translation("status_processing", "Обработка...", "Processing..."),
     "status_processing_segment": Translation(
         "status_processing_segment",
@@ -198,6 +229,46 @@ Additional:
     "dialog_title": Translation("dialog_title", "Сегмент", "Segment"),
     "start_time": Translation("start_time", "Начало", "Start"),
     "end_time": Translation("end_time", "Конец", "End"),
+    "log_ffmpeg_missing": Translation(
+        "log_ffmpeg_missing",
+        "FFmpeg не обнаружен. Укажите путь в настройках приложения.",
+        "FFmpeg is missing. Please configure it in the settings.",
+    ),
+    "log_ffmpeg_ready": Translation(
+        "log_ffmpeg_ready",
+        "FFmpeg найден. Все функции разблокированы.",
+        "FFmpeg detected. All features are unlocked.",
+    ),
+    "chapters_detected_title": Translation(
+        "chapters_detected_title",
+        "Обнаружены главы видео",
+        "Video chapters detected",
+    ),
+    "chapters_detected_text": Translation(
+        "chapters_detected_text",
+        "Найдено меток: {count}. Создать сегменты автоматически?",
+        "Detected {count} chapter markers. Create segments automatically?",
+    ),
+    "chapters_replace_question": Translation(
+        "chapters_replace_question",
+        "Текущий список сегментов будет заменён.",
+        "The existing segment list will be replaced.",
+    ),
+    "chapters_until_end": Translation(
+        "chapters_until_end",
+        "до конца файла",
+        "until end of file",
+    ),
+    "chapters_created": Translation(
+        "chapters_created",
+        "Сегменты созданы из меток ({count}).",
+        "Segments created from chapter markers ({count}).",
+    ),
+    "chapters_created_status": Translation(
+        "chapters_created_status",
+        "Готово: создано сегментов — {count}",
+        "Done: {count} segments created",
+    ),
     "filename": Translation("filename", "Имя файла", "Filename"),
     "ok": Translation("ok", "ОК", "OK"),
     "cancel": Translation("cancel", "Отмена", "Cancel"),
