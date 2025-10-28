@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 from .time_parser import parse_time
+from . import ffmpeg_helper
 
 SUPPORTED_INPUT_EXTENSIONS = {
     ".mp4",
@@ -31,11 +31,9 @@ SUPPORTED_OUTPUT_EXTENSIONS = {
 
 
 def ensure_ffmpeg_available() -> None:
-    """Проверяет доступность ffmpeg в PATH."""
-    if not shutil.which("ffmpeg"):
-        raise FileNotFoundError(
-            "FFmpeg не найден. Установите ffmpeg и добавьте его в PATH."
-        )
+    """Проверяет доступность ffmpeg."""
+
+    ffmpeg_helper.ensure_ffmpeg_available()
 
 
 def validate_input_file(path: str | os.PathLike[str]) -> Path:

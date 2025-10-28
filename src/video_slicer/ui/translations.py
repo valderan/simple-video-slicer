@@ -58,8 +58,132 @@ TRANSLATIONS: Dict[str, Translation] = {
         "Параметры конвертации",
         "Conversion settings",
     ),
+    "settings_menu": Translation("settings_menu", "Настройки", "Settings"),
+    "settings_title": Translation("settings_title", "Настройки", "Settings"),
+    "settings_language": Translation("settings_language", "Язык", "Language"),
+    "settings_theme": Translation("settings_theme", "Тема", "Theme"),
+    "settings_ffmpeg": Translation("settings_ffmpeg", "Путь к FFmpeg", "FFmpeg path"),
+    "settings_ffmpeg_placeholder": Translation(
+        "settings_ffmpeg_placeholder",
+        "Оставьте пустым для использования FFmpeg из PATH",
+        "Leave empty to use FFmpeg from PATH",
+    ),
+    "settings_detect_ffmpeg": Translation(
+        "settings_detect_ffmpeg",
+        "Определить автоматически",
+        "Detect automatically",
+    ),
+    "settings_enable_logging": Translation(
+        "settings_enable_logging",
+        "Сохранять полный журнал в файл",
+        "Save detailed log to file",
+    ),
+    "settings_log_file": Translation(
+        "settings_log_file",
+        "Файл журнала",
+        "Log file",
+    ),
+    "theme_light": Translation("theme_light", "Светлая", "Light"),
+    "theme_dark": Translation("theme_dark", "Тёмная", "Dark"),
     "help_menu": Translation("help_menu", "Справка", "Help"),
     "help_manual": Translation("help_manual", "Руководство пользователя", "User guide"),
+    "help_about": Translation("help_about", "О программе", "About"),
+    "help_manual_content": Translation(
+        "help_manual_content",
+        """
+SVS - Simple Video Slicer помогает быстро нарезать видеофайл на отдельные сегменты.
+
+Главное окно:
+ • Входной видеофайл – выберите исходное видео. После выбора появится информация о файле.
+ • Выходная папка – каталог, куда будут сохраняться готовые сегменты.
+ • Таблица сегментов – список всех фрагментов, которые будут вырезаны.
+ • Кнопки управления – добавление, редактирование, удаление, дублирование и предпросмотр сегментов.
+ • Прогресс и журнал – отображают текущее состояние обработки и сообщения FFmpeg.
+
+Добавление сегментов:
+ 1. Нажмите «Добавить сегмент».
+ 2. Укажите время начала и конца. Если конец пустой – сегмент будет до конца файла.
+ 3. При необходимости задайте имя файла, формат и параметры конвертации.
+
+Обработка:
+ • После заполнения списка сегментов нажмите «Запустить обработку».
+ • Кнопка «Остановить» прерывает текущий процесс FFmpeg.
+
+Дополнительно:
+ • Используйте меню «Настройки» для выбора языка, темы, указания ffmpeg и параметров журнала.
+ • Кнопки «Сохранить список» и «Загрузить список» позволяют работать с сегментами в формате JSON.
+        """.strip(),
+        """
+SVS - Simple Video Slicer helps you split a video into separate clips.
+
+Main window:
+ • Input video file – choose the source video. File information appears after selection.
+ • Output directory – folder where the resulting segments are stored.
+ • Segment table – list of all clips to be exported.
+ • Control buttons – add, edit, delete, duplicate and preview segments.
+ • Progress and log – show the processing state and FFmpeg messages.
+
+Adding segments:
+ 1. Click "Add segment".
+ 2. Specify the start and end time. Leave the end empty to cut until the end of the file.
+ 3. Optionally set a file name, container and conversion parameters.
+
+Processing:
+ • After preparing the segment list press "Start processing".
+ • The "Stop" button interrupts the current FFmpeg run.
+
+Additional:
+ • Use the "Settings" menu to choose language, theme, ffmpeg path and logging options.
+ • The "Save list" and "Load list" buttons store and restore segment presets in JSON format.
+        """.strip(),
+    ),
+    "about_text": Translation(
+        "about_text",
+        "SVS - Simple Video Slicer\nVladimir Kundryukov\nhttps://github.com/valderan/simple-video-slicer",
+        "SVS - Simple Video Slicer\nVladimir Kundryukov\nhttps://github.com/valderan/simple-video-slicer",
+    ),
+    "save_segments": Translation("save_segments", "Сохранить список", "Save list"),
+    "load_segments": Translation("load_segments", "Загрузить список", "Load list"),
+    "tooltip_save_segments": Translation(
+        "tooltip_save_segments",
+        "Сохранить сегменты в JSON",
+        "Save segments to JSON",
+    ),
+    "tooltip_load_segments": Translation(
+        "tooltip_load_segments",
+        "Загрузить сегменты из JSON",
+        "Load segments from JSON",
+    ),
+    "segments_file_filter": Translation(
+        "segments_file_filter",
+        "JSON файлы (*.json)",
+        "JSON files (*.json)",
+    ),
+    "all_files_filter": Translation(
+        "all_files_filter",
+        "Все файлы (*)",
+        "All files (*)",
+    ),
+    "segments_save_success": Translation(
+        "segments_save_success",
+        "Список сегментов сохранён",
+        "Segment list saved",
+    ),
+    "segments_load_success": Translation(
+        "segments_load_success",
+        "Список сегментов загружен",
+        "Segment list loaded",
+    ),
+    "segments_save_error": Translation(
+        "segments_save_error",
+        "Не удалось сохранить список сегментов",
+        "Failed to save segment list",
+    ),
+    "segments_load_error": Translation(
+        "segments_load_error",
+        "Не удалось загрузить список сегментов",
+        "Failed to load segment list",
+    ),
     "language_menu": Translation("language_menu", "Язык", "Language"),
     "language_ru": Translation("language_ru", "Русский", "Russian"),
     "language_en": Translation("language_en", "Английский", "English"),
