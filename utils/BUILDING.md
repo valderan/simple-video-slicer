@@ -13,6 +13,7 @@
 ```bash
 uv sync                   # устанавливаем зависимости проекта
 uv pip install pyinstaller  # добавляем PyInstaller (однократно)
+source .venv/bin/activate  
 python utils/build.py linux_86_64
 ```
 Готовый бинарный файл будет сохранён в `./dist/svs_0_1_linux_86_64`.
@@ -56,6 +57,7 @@ python utils/build.py linux_86_64
 ```bash
 uv sync                    # install project dependencies
 uv pip install pyinstaller # add PyInstaller (one time)
+source .venv/bin/activate  
 python utils/build.py linux_86_64
 ```
 The resulting binary will be stored at `./dist/svs_0_1_linux_86_64`.
