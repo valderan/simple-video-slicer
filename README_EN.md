@@ -51,7 +51,7 @@ uv pip install -e .[dev]  # optional for development tools
 ## Quick Start
 ```bash
 uv sync
-uv run video-slicer
+uv run svs
 ```
 1. Select the input video file and output folder.
 2. Add one or more segments manually or from a text description.
