@@ -13,6 +13,8 @@ class Segment:
     start: float
     end: Optional[float] = None
     filename: Optional[str] = None
+    container: str = "mp4"
+    convert: bool = False
     video_codec: str = "copy"
     audio_codec: str = "copy"
     crf: int = 23
@@ -25,5 +27,13 @@ class Segment:
         return max(0.0, self.end - self.start)
 
     def output_path(self, output_dir: Path, default_ext: str) -> Path:
-        name = self.filename or f"segment_{self.index:03d}{default_ext}"
-        return output_dir / name
+        if self.filename:
+            filename = self.filename
+            if "." not in Path(filename).name:
+                filename = f"{filename}.{self.container or default_ext.lstrip('.')}"
+        else:
+            extension = self.container or default_ext.lstrip(".")
+            if not extension.startswith("."):
+                extension = f".{extension}"
+            filename = f"segment_{self.index:03d}{extension}"
+        return output_dir / filename
