@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from ..utils.time_parser import parse_time
 from .translations import Translator
@@ -21,6 +21,7 @@ class BulkSegmentDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self._translator = translator
         self._result: List[Tuple[float, str | None]] = []
+        self._separator = "_"
 
         self.setWindowTitle(self._translator.tr("bulk_create_title"))
         self.setModal(True)
@@ -28,20 +29,31 @@ class BulkSegmentDialog(QtWidgets.QDialog):
 
         description = QtWidgets.QLabel(self._translator.tr("bulk_create_description"))
         description.setWordWrap(True)
+        description.setTextFormat(QtCore.Qt.TextFormat.RichText)
 
         self.text_edit = QtWidgets.QPlainTextEdit()
         self.text_edit.setPlaceholderText(
             self._translator.tr("bulk_create_placeholder")
         )
 
-        self.numbering_checkbox = QtWidgets.QCheckBox(
-            self._translator.tr("bulk_create_option_numbering")
-        )
-        self.numbering_checkbox.setChecked(True)
         self.description_checkbox = QtWidgets.QCheckBox(
             self._translator.tr("bulk_create_option_description")
         )
         self.description_checkbox.setChecked(True)
+
+        self.numbering_checkbox = QtWidgets.QCheckBox(
+            self._translator.tr("bulk_create_option_numbering")
+        )
+        self.numbering_checkbox.setChecked(True)
+
+        separator_label = QtWidgets.QLabel(
+            self._translator.tr("bulk_create_separator_label")
+        )
+        self.separator_edit = QtWidgets.QLineEdit("_")
+        self.separator_edit.setMaxLength(5)
+        self.separator_edit.setPlaceholderText(
+            self._translator.tr("bulk_create_separator_placeholder")
+        )
 
         button_box = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -59,9 +71,18 @@ class BulkSegmentDialog(QtWidgets.QDialog):
         if cancel_button:
             cancel_button.setText(self._translator.tr("cancel"))
 
-        options_layout = QtWidgets.QHBoxLayout()
-        options_layout.addWidget(self.numbering_checkbox)
+        options_layout = QtWidgets.QVBoxLayout()
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(6)
         options_layout.addWidget(self.description_checkbox)
+        options_layout.addWidget(self.numbering_checkbox)
+
+        separator_layout = QtWidgets.QHBoxLayout()
+        separator_layout.setContentsMargins(0, 0, 0, 0)
+        separator_layout.setSpacing(8)
+        separator_layout.addWidget(separator_label)
+        separator_layout.addWidget(self.separator_edit)
+        options_layout.addLayout(separator_layout)
         options_layout.addStretch()
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -70,10 +91,15 @@ class BulkSegmentDialog(QtWidgets.QDialog):
         layout.addWidget(self.text_edit)
         layout.addWidget(button_box)
 
+        self.numbering_checkbox.toggled.connect(self._update_separator_state)
+        self.description_checkbox.toggled.connect(self._update_separator_state)
+        self._update_separator_state()
+
     def accept(self) -> None:  # noqa: D401
         """Validate input before closing the dialog."""
 
         try:
+            self._separator = self.get_separator()
             self._result = self._parse_lines(self.text_edit.toPlainText())
         except ValueError as exc:
             QtWidgets.QMessageBox.warning(
@@ -92,6 +118,40 @@ class BulkSegmentDialog(QtWidgets.QDialog):
 
     def should_include_description(self) -> bool:
         return self.description_checkbox.isChecked()
+
+    def get_separator(self) -> str:
+        if not (
+            self.numbering_checkbox.isChecked()
+            and self.description_checkbox.isChecked()
+        ):
+            self._separator = "_"
+            return self._separator
+        text = self.separator_edit.text().strip()
+        if not text:
+            text = "_"
+            self.separator_edit.setText(text)
+        if self._contains_invalid_separator_chars(text):
+            raise ValueError(self._translator.tr("bulk_create_separator_error"))
+        self._separator = text
+        return text
+
+    def selected_separator(self) -> str:
+        return self._separator
+
+    @staticmethod
+    def _contains_invalid_separator_chars(value: str) -> bool:
+        invalid = {'<', '>', ':', '"', '/', '\\', '|', '?', '*'}
+        return any(char in invalid for char in value)
+
+    def _update_separator_state(self) -> None:
+        enabled = (
+            self.numbering_checkbox.isChecked()
+            and self.description_checkbox.isChecked()
+        )
+        self.separator_edit.setEnabled(enabled)
+        self.separator_edit.setPlaceholderText(
+            self._translator.tr("bulk_create_separator_placeholder")
+        )
 
     def _parse_lines(self, text: str) -> List[Tuple[float, str | None]]:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
