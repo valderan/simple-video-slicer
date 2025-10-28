@@ -69,6 +69,21 @@ class SettingsDialog(QtWidgets.QDialog):
         self.log_browse.setText("…")
         self.log_browse.clicked.connect(self._choose_log_file)
 
+        self.strip_metadata_checkbox = QtWidgets.QCheckBox(
+            self.translator.tr("settings_strip_metadata")
+        )
+        self.strip_metadata_checkbox.setChecked(self._settings.strip_metadata)
+
+        self.embed_metadata_checkbox = QtWidgets.QCheckBox(
+            self.translator.tr("settings_embed_metadata")
+        )
+        self.embed_metadata_checkbox.setChecked(self._settings.embed_svs_metadata)
+
+        self.icon_buttons_checkbox = QtWidgets.QCheckBox(
+            self.translator.tr("settings_use_icons")
+        )
+        self.icon_buttons_checkbox.setChecked(self._settings.use_icon_buttons)
+
         ffmpeg_layout = QtWidgets.QHBoxLayout()
         ffmpeg_layout.addWidget(self.ffmpeg_edit)
         ffmpeg_layout.addWidget(self.ffmpeg_browse)
@@ -84,6 +99,9 @@ class SettingsDialog(QtWidgets.QDialog):
         form_layout.addRow("", self.ffmpeg_auto_button)
         form_layout.addRow(self.log_checkbox)
         form_layout.addRow(self.translator.tr("settings_log_file"), log_layout)
+        form_layout.addRow(self.strip_metadata_checkbox)
+        form_layout.addRow(self.embed_metadata_checkbox)
+        form_layout.addRow(self.icon_buttons_checkbox)
 
         self.button_box = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -143,4 +161,7 @@ class SettingsDialog(QtWidgets.QDialog):
         result.log_to_file = self.log_checkbox.isChecked()
         log_path = self.log_path_edit.text().strip()
         result.log_file_path = log_path or None
+        result.strip_metadata = self.strip_metadata_checkbox.isChecked()
+        result.embed_svs_metadata = self.embed_metadata_checkbox.isChecked()
+        result.use_icon_buttons = self.icon_buttons_checkbox.isChecked()
         return result

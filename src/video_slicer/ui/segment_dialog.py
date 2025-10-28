@@ -67,6 +67,7 @@ class SegmentDialog(QtWidgets.QDialog):
         self.crf_spin.setRange(0, 51)
         self.crf_spin.setValue(self.segment.crf)
         self.extra_args_edit = QtWidgets.QLineEdit(self.segment.extra_args)
+        self.extra_args_edit.setClearButtonEnabled(True)
 
         for combo, value in [
             (self.video_codec_combo, self.segment.video_codec),
@@ -129,6 +130,9 @@ class SegmentDialog(QtWidgets.QDialog):
         self.end_edit.setPlaceholderText(self.translator.tr("end_placeholder"))
         self.conversion_group.setTitle(self.translator.tr("conversion_settings"))
         self.convert_checkbox.setText(self.translator.tr("convert_checkbox"))
+        hint = self.translator.tr("extra_hint")
+        self.extra_args_edit.setPlaceholderText(hint)
+        self.extra_args_edit.setToolTip(hint)
         self.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(
             self.translator.tr("ok")
         )

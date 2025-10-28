@@ -39,6 +39,9 @@ class AppSettings:
     log_file_path: str | None = None
     last_input_dir: str | None = None
     last_output_dir: str | None = None
+    strip_metadata: bool = False
+    embed_svs_metadata: bool = True
+    use_icon_buttons: bool = True
 
     def clone(self) -> "AppSettings":
         return replace(self)
@@ -62,6 +65,9 @@ class SettingsManager:
             log_file_path=self._settings.value("log_file_path", type=str),
             last_input_dir=self._settings.value("last_input_dir", type=str),
             last_output_dir=self._settings.value("last_output_dir", type=str),
+            strip_metadata=self._settings.value("strip_metadata", False, bool),
+            embed_svs_metadata=self._settings.value("embed_svs_metadata", True, bool),
+            use_icon_buttons=self._settings.value("use_icon_buttons", True, bool),
         )
         if data.language not in {"ru", "en"}:
             data.language = None
@@ -77,4 +83,7 @@ class SettingsManager:
         self._settings.setValue("log_file_path", settings.log_file_path)
         self._settings.setValue("last_input_dir", settings.last_input_dir)
         self._settings.setValue("last_output_dir", settings.last_output_dir)
+        self._settings.setValue("strip_metadata", settings.strip_metadata)
+        self._settings.setValue("embed_svs_metadata", settings.embed_svs_metadata)
+        self._settings.setValue("use_icon_buttons", settings.use_icon_buttons)
         self._settings.sync()

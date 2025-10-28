@@ -66,6 +66,11 @@ TRANSLATIONS: Dict[str, Translation] = {
         "Дополнительные параметры FFmpeg",
         "Additional FFmpeg parameters",
     ),
+    "extra_hint": Translation(
+        "extra_hint",
+        "Например: -preset slow -profile:v high",
+        "For example: -preset slow -profile:v high",
+    ),
     "format": Translation("format", "Формат", "Format"),
     "convert": Translation("convert", "Конвертация", "Conversion"),
     "convert_column": Translation("convert_column", "Конвертация", "Conversion"),
@@ -104,6 +109,21 @@ TRANSLATIONS: Dict[str, Translation] = {
         "settings_log_file",
         "Файл журнала",
         "Log file",
+    ),
+    "settings_strip_metadata": Translation(
+        "settings_strip_metadata",
+        "Стирать метаинформацию в сегментах",
+        "Strip metadata from generated segments",
+    ),
+    "settings_embed_metadata": Translation(
+        "settings_embed_metadata",
+        "Добавлять информацию о SVS в метаинформацию файла",
+        "Embed SVS information into file metadata",
+    ),
+    "settings_use_icons": Translation(
+        "settings_use_icons",
+        "Использовать иконки вместо надписей",
+        "Use icons instead of button labels",
     ),
     "theme_light": Translation("theme_light", "Светлая", "Light"),
     "theme_dark": Translation("theme_dark", "Тёмная", "Dark"),
@@ -198,6 +218,26 @@ Additional:
         "bulk_create_tooltip",
         "Создать сегменты по текстовому описанию",
         "Generate segments from a text description",
+    ),
+    "clear_segments": Translation(
+        "clear_segments",
+        "Очистить список",
+        "Clear list",
+    ),
+    "tooltip_clear_segments": Translation(
+        "tooltip_clear_segments",
+        "Удалить все сегменты",
+        "Remove all segments",
+    ),
+    "bulk_edit_segments": Translation(
+        "bulk_edit_segments",
+        "Применить к выбранным",
+        "Apply to selected",
+    ),
+    "tooltip_bulk_edit": Translation(
+        "tooltip_bulk_edit",
+        "Изменить формат и параметры конвертации выбранных сегментов",
+        "Change format and conversion settings for selected segments",
     ),
     "tooltip_save_segments": Translation(
         "tooltip_save_segments",
@@ -355,6 +395,11 @@ Additional:
     ),
     "status_stopped": Translation("status_stopped", "Обработка остановлена", "Processing stopped"),
     "dialog_title": Translation("dialog_title", "Сегмент", "Segment"),
+    "batch_edit_title": Translation(
+        "batch_edit_title",
+        "Применить настройки к сегментам",
+        "Apply settings to segments",
+    ),
     "start_time": Translation("start_time", "Начало", "Start"),
     "end_time": Translation("end_time", "Конец", "End"),
     "log_ffmpeg_missing": Translation(
@@ -429,6 +474,21 @@ Additional:
         "Завершено: {name}",
         "Completed: {name}",
     ),
+    "log_copy_success": Translation(
+        "log_copy_success",
+        "Журнал скопирован в буфер обмена",
+        "Log copied to clipboard",
+    ),
+    "bulk_edit_log": Translation(
+        "bulk_edit_log",
+        "Параметры применены к сегментам: {count}",
+        "Applied settings to segments: {count}",
+    ),
+    "segments_cleared_log": Translation(
+        "segments_cleared_log",
+        "Список сегментов очищен",
+        "Segment list cleared",
+    ),
     "processing_complete": Translation(
         "processing_complete",
         "Обработка завершена успешно",
@@ -488,6 +548,12 @@ Additional:
         "tooltip_stop",
         "Прервать текущую обработку",
         "Stop current processing",
+    ),
+    "copy_log": Translation("copy_log", "Копировать журнал", "Copy log"),
+    "tooltip_copy_log": Translation(
+        "tooltip_copy_log",
+        "Скопировать содержимое журнала в буфер обмена",
+        "Copy log contents to clipboard",
     ),
     "filename_placeholder": Translation(
         "filename_placeholder",
