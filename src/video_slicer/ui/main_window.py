@@ -28,6 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.segment_manager = SegmentManager()
         self.input_file: Path | None = None
         self.output_dir: Path | None = None
+        self._file_info: dict[str, object] | None = None
         self._stop_requested = False
 
         self.setWindowTitle("SVS - Simple Video Slicer")
@@ -76,6 +77,7 @@ class MainWindow(QtWidgets.QMainWindow):
         file_layout.addWidget(self.file_button)
 
         self.file_info_label = QtWidgets.QLabel()
+        self.file_info_label.setStyleSheet("color: #00c853;")
 
         output_layout = QtWidgets.QHBoxLayout()
         self.output_label = QtWidgets.QLabel()
@@ -202,6 +204,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lang_en_action.setText(self.translator.tr("language_en"))
         self.status_bar.showMessage(self.translator.tr("status_ready"))
         self._update_table_headers()
+        if self._file_info:
+            self.file_info_label.setText(self._format_file_info(self._file_info))
 
     def _update_table_headers(self) -> None:
         headers = [
@@ -250,11 +254,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.file_line.setText(file_path)
                 logger.info("Выбран входной файл: %s", file_path)
                 info = self._probe_file(self.input_file)
-                self.file_info_label.setText(info)
+                self._file_info = info
+                self.file_info_label.setText(self._format_file_info(info))
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
                 )
+                self._file_info = None
+                self.file_info_label.setText(str(exc))
 
     def select_output_dir(self) -> None:
         directory = QtWidgets.QFileDialog.getExistingDirectory(
@@ -498,23 +505,78 @@ class MainWindow(QtWidgets.QMainWindow):
         timestamp = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
         self.log_console.appendPlainText(f"[{timestamp}] {message}")
 
-    def _probe_file(self, path: Path) -> str:
+    def _probe_file(self, path: Path) -> dict[str, object]:
         try:
             data = ffmpeg_helper.probe_file(path)
-            duration = data.get("format", {}).get("duration")
-            streams = data.get("streams", [])
-            video_streams = [s for s in streams if s.get("codec_type") == "video"]
-            audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
-            video_info = video_streams[0] if video_streams else {}
-            audio_info = audio_streams[0] if audio_streams else {}
-            duration_text = (
-                f"Длительность: {float(duration):.2f} c" if duration else ""
-            )
-            video_text = (
-                f"Видео: {video_info.get('codec_name', '')} {video_info.get('width', '')}x{video_info.get('height', '')}"
-            )
-            audio_text = f"Аудио: {audio_info.get('codec_name', '')}"
-            return ", ".join(filter(None, [duration_text, video_text, audio_text]))
-        except Exception as exc:  # noqa: BLE001
+        except Exception:
             logger.exception("Не удалось получить информацию о файле")
-            return str(exc)
+            raise
+
+        duration_raw = data.get("format", {}).get("duration")
+        streams = data.get("streams", [])
+        video_streams = [s for s in streams if s.get("codec_type") == "video"]
+        audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+        video_info = video_streams[0] if video_streams else {}
+        audio_info = audio_streams[0] if audio_streams else {}
+        duration_value = float(duration_raw) if duration_raw else None
+        width_raw = video_info.get("width")
+        height_raw = video_info.get("height")
+        width = self._safe_int(width_raw)
+        height = self._safe_int(height_raw)
+        info: dict[str, object] = {
+            "duration": duration_value,
+            "resolution": (width, height) if width and height else None,
+            "video_codec": video_info.get("codec_name"),
+            "audio_codec": audio_info.get("codec_name"),
+        }
+        return info
+
+    def _format_file_info(self, info: dict[str, object]) -> str:
+        duration_value = info.get("duration")
+        if isinstance(duration_value, (int, float)) and duration_value >= 0:
+            duration_text = self._format_duration(duration_value)
+        else:
+            duration_text = self.translator.tr("file_info_unknown")
+
+        resolution_value = info.get("resolution")
+        if (
+            isinstance(resolution_value, tuple)
+            and len(resolution_value) == 2
+            and all(isinstance(v, int) and v > 0 for v in resolution_value)
+        ):
+            resolution_text = f"{resolution_value[0]}x{resolution_value[1]}"
+        else:
+            resolution_text = self.translator.tr("file_info_unknown")
+
+        codecs = []
+        for key in ("video_codec", "audio_codec"):
+            value = info.get(key)
+            if isinstance(value, str) and value:
+                codecs.append(value.upper())
+        codecs_text = (
+            ", ".join(codecs) if codecs else self.translator.tr("file_info_unknown")
+        )
+
+        template = self.translator.tr("file_info_template")
+        return template.format(
+            duration=duration_text,
+            resolution=resolution_text,
+            codecs=codecs_text,
+        )
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        total_seconds = int(round(seconds))
+        minutes, sec = divmod(total_seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours:02d}:{minutes:02d}:{sec:02d}"
+
+    @staticmethod
+    def _safe_int(value: object) -> int | None:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None

@@ -14,6 +14,16 @@ class Translation:
 
 TRANSLATIONS: Dict[str, Translation] = {
     "file_label": Translation("file_label", "Входной видеофайл:", "Input video file:"),
+    "file_info_template": Translation(
+        "file_info_template",
+        "Длительность: {duration} | Разрешение: {resolution} | Кодеки: {codecs}",
+        "Duration: {duration} | Resolution: {resolution} | Codecs: {codecs}",
+    ),
+    "file_info_unknown": Translation(
+        "file_info_unknown",
+        "нет данных",
+        "n/a",
+    ),
     "browse": Translation("browse", "Обзор...", "Browse..."),
     "output_label": Translation("output_label", "Выходная папка:", "Output directory:"),
     "segment_table": Translation("segment_table", "Сегменты", "Segments"),
