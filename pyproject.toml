@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 "video-slicer" = "video_slicer.main:main"
+svs = "video_slicer.main:main"
 
 [project.optional-dependencies]
 dev = [
