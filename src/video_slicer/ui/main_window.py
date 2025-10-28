@@ -47,6 +47,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.output_dir: Path | None = None
         self._file_info: dict[str, object] | None = None
         self._probe_data: dict[str, object] | None = None
+        self._segment_probe_cache: dict[Path, dict[str, object]] = {}
         self._stop_requested = False
         self._log_file_handler: logging.Handler | None = None
         self._ffmpeg_available = True
@@ -179,7 +180,7 @@ class MainWindow(QtWidgets.QMainWindow):
         output_layout.addWidget(self.output_line)
         output_layout.addWidget(self.output_button)
 
-        self.table = QtWidgets.QTableWidget(0, 7)
+        self.table = QtWidgets.QTableWidget(0, 8)
         self.table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -196,6 +197,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for column in range(2, 6):
             header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.itemDoubleClicked.connect(self.edit_segment)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
@@ -429,6 +431,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.translator.tr("end_time"),
             self.translator.tr("format"),
             self.translator.tr("convert_column"),
+            self.translator.tr("segment_metadata_column"),
             self.translator.tr("preview"),
         ]
         for idx, text in enumerate(headers):
@@ -605,6 +608,66 @@ class MainWindow(QtWidgets.QMainWindow):
 
         dialog.exec()
 
+    def _show_segment_metadata_dialog(self, path: Path | None) -> None:
+        if not path or not path.exists():
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.translator.tr("error"),
+                self.translator.tr("segment_metadata_missing"),
+            )
+            return
+
+        try:
+            resolved_path = path.resolve()
+        except Exception:  # noqa: BLE001
+            resolved_path = path
+
+        try:
+            probe_data = self._segment_probe_cache.get(resolved_path)
+            if probe_data is None:
+                probe_data = ffmpeg_helper.probe_file(resolved_path)
+                self._segment_probe_cache[resolved_path] = probe_data
+        except Exception as exc:  # noqa: BLE001
+            QtWidgets.QMessageBox.critical(
+                self,
+                self.translator.tr("error"),
+                self.translator.tr("segment_metadata_error").format(error=exc),
+            )
+            return
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(self.translator.tr("segment_metadata_dialog_title"))
+        dialog.setModal(True)
+        dialog.resize(640, 520)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        header = QtWidgets.QLabel(
+            self.translator.tr("segment_metadata_file_label").format(
+                path=str(resolved_path)
+            )
+        )
+        header.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(header)
+
+        text = QtWidgets.QPlainTextEdit()
+        text.setPlainText(json.dumps(probe_data, ensure_ascii=False, indent=2))
+        text.setReadOnly(True)
+        layout.addWidget(text)
+
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Close
+        )
+        close_button = button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        if close_button:
+            close_button.setText(self.translator.tr("preview_close"))
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec()
+
     def show_about(self) -> None:
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowTitle(self.translator.tr("help_about"))
@@ -747,6 +810,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger.info("Выходная директория: %s", self.output_dir)
                 self.app_settings.last_output_dir = str(self.output_dir)
                 self.settings_manager.save(self.app_settings)
+                self._segment_probe_cache.clear()
+                self._refresh_table(preserve_selection=True)
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
                     self, self.translator.tr("error"), str(exc)
@@ -780,6 +845,31 @@ class MainWindow(QtWidgets.QMainWindow):
     def remove_segment(self) -> None:
         rows = self._selected_rows()
         if not rows:
+            return
+        message = QtWidgets.QMessageBox(self)
+        message.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        message.setWindowTitle(
+            self.translator.tr("confirm_remove_segments_title")
+        )
+        message.setText(
+            self.translator.tr("confirm_remove_segments_text").format(
+                count=len(rows)
+            )
+        )
+        message.setStandardButtons(
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No
+        )
+        yes_button = message.button(QtWidgets.QMessageBox.StandardButton.Yes)
+        if yes_button:
+            yes_button.setText(self.translator.tr("yes"))
+        no_button = message.button(QtWidgets.QMessageBox.StandardButton.No)
+        if no_button:
+            no_button.setText(self.translator.tr("no"))
+        if (
+            message.exec()
+            != QtWidgets.QMessageBox.StandardButton.Yes
+        ):
             return
         for row in reversed(rows):
             self.segment_manager.remove_segment(row)
@@ -888,7 +978,29 @@ class MainWindow(QtWidgets.QMainWindow):
     def clear_segments(self) -> None:
         if not self.segment_manager.segments:
             return
+        message = QtWidgets.QMessageBox(self)
+        message.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        message.setWindowTitle(
+            self.translator.tr("confirm_clear_segments_title")
+        )
+        message.setText(self.translator.tr("confirm_clear_segments_text"))
+        message.setStandardButtons(
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No
+        )
+        yes_button = message.button(QtWidgets.QMessageBox.StandardButton.Yes)
+        if yes_button:
+            yes_button.setText(self.translator.tr("yes"))
+        no_button = message.button(QtWidgets.QMessageBox.StandardButton.No)
+        if no_button:
+            no_button.setText(self.translator.tr("no"))
+        if (
+            message.exec()
+            != QtWidgets.QMessageBox.StandardButton.Yes
+        ):
+            return
         self.segment_manager.clear()
+        self._segment_probe_cache.clear()
         logger.info("Список сегментов очищен")
         self._refresh_table()
         self._select_rows([])
@@ -902,13 +1014,19 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = PreviewDialog(self, self.translator, self.input_file, segment.start)
         dialog.exec()
 
-    def _refresh_table(self) -> None:
+    def _refresh_table(self, *, preserve_selection: bool = False) -> None:
+        previous_selection = self._selected_rows() if preserve_selection else []
         self.table.setRowCount(len(self.segment_manager.segments))
         use_icons = self.app_settings.use_icon_buttons
         preview_text = (
             self.translator.tr("preview_icon")
             if use_icons
             else self.translator.tr("preview")
+        )
+        metadata_text = (
+            ""
+            if use_icons
+            else self.translator.tr("segment_metadata_column")
         )
         default_container = "mp4"
         if self.input_file and self.input_file.suffix:
@@ -929,17 +1047,41 @@ class MainWindow(QtWidgets.QMainWindow):
                 ),
             ]
             for col, item in enumerate(items):
-                if col == 0:
-                    item.setFlags(
-                        QtCore.Qt.ItemFlag.ItemIsSelectable
-                        | QtCore.Qt.ItemFlag.ItemIsEnabled
-                    )
-                else:
-                    item.setFlags(
-                        QtCore.Qt.ItemFlag.ItemIsSelectable
-                        | QtCore.Qt.ItemFlag.ItemIsEnabled
-                    )
+                item.setFlags(
+                    QtCore.Qt.ItemFlag.ItemIsSelectable
+                    | QtCore.Qt.ItemFlag.ItemIsEnabled
+                )
                 self.table.setItem(row, col, item)
+
+            output_path = self._resolve_segment_output_path(segment, default_container)
+            file_exists = output_path is not None and output_path.is_file()
+
+            metadata_button = QtWidgets.QPushButton()
+            if use_icons:
+                metadata_button.setIcon(
+                    self.style().standardIcon(
+                        QtWidgets.QStyle.StandardPixmap.SP_FileDialogInfoView
+                    )
+                )
+                metadata_button.setText("")
+            else:
+                metadata_button.setText(metadata_text)
+            metadata_button.setIconSize(QtCore.QSize(20, 20))
+            metadata_button.setAccessibleName(
+                self.translator.tr("segment_metadata_column")
+            )
+            tooltip = (
+                self.translator.tr("segment_metadata_tooltip")
+                if file_exists
+                else self.translator.tr("segment_metadata_missing")
+            )
+            metadata_button.setToolTip(tooltip)
+            metadata_button.setEnabled(file_exists)
+            metadata_button.clicked.connect(
+                partial(self._show_segment_metadata_dialog, output_path)
+            )
+            self.table.setCellWidget(row, 6, metadata_button)
+
             preview_button = QtWidgets.QPushButton()
             if use_icons:
                 preview_button.setIcon(
@@ -953,8 +1095,51 @@ class MainWindow(QtWidgets.QMainWindow):
             preview_button.setToolTip(self.translator.tr("tooltip_preview"))
             preview_button.setIconSize(QtCore.QSize(20, 20))
             preview_button.clicked.connect(partial(self._show_preview_for_row, row))
-            self.table.setCellWidget(row, 6, preview_button)
+            self.table.setCellWidget(row, 7, preview_button)
+
+        if preserve_selection and previous_selection:
+            valid_rows = [
+                index for index in previous_selection if index < self.table.rowCount()
+            ]
+            if valid_rows:
+                self._select_rows(valid_rows)
+
         self._update_selection_controls()
+
+    def _preferred_output_directory(self) -> Path | None:
+        if self.output_dir and self.output_dir.exists():
+            return self.output_dir
+        last_dir = self.app_settings.last_output_dir
+        if last_dir:
+            candidate = Path(last_dir)
+            if candidate.exists() and candidate.is_dir():
+                return candidate
+        return None
+
+    def _resolve_segment_output_path(
+        self, segment: Segment, default_container: str
+    ) -> Path | None:
+        filename = segment.filename
+        base_dir = self._preferred_output_directory()
+        if filename:
+            candidate = Path(filename)
+            if candidate.is_absolute():
+                target = candidate
+            elif base_dir:
+                target = base_dir / candidate
+            else:
+                target = None
+            if target:
+                if "." not in candidate.name:
+                    extension = segment.container or default_container
+                    if extension and not extension.startswith("."):
+                        extension = f".{extension}"
+                    if extension:
+                        target = target.with_suffix(extension)
+                return target
+        if base_dir:
+            return segment.output_path(base_dir, default_container)
+        return None
 
     def _collect_segments_from_table(self) -> List[Segment]:
         return [replace(segment) for segment in self.segment_manager.segments]
@@ -1106,6 +1291,7 @@ class MainWindow(QtWidgets.QMainWindow):
         entries = dialog.get_entries()
         add_numbering = dialog.should_add_numbering()
         include_description = dialog.should_include_description()
+        separator = dialog.selected_separator()
         try:
             segments_data = self._build_segments_from_entries(entries)
         except ValueError as exc:
@@ -1132,6 +1318,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "bulk_create_status",
             add_numbering=add_numbering,
             include_description=include_description,
+            numbering_separator=separator,
         )
 
     def process_segments(self) -> None:
@@ -1275,6 +1462,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stop_button.setEnabled(False)
         self._stop_requested = False
         self._stop_processing_thread()
+        self._refresh_table(preserve_selection=True)
 
     def _stop_processing_thread(self) -> None:
         if self._processing_thread:
@@ -1448,8 +1636,10 @@ class MainWindow(QtWidgets.QMainWindow):
         *,
         add_numbering: bool = False,
         include_description: bool = True,
+        numbering_separator: str = "_",
     ) -> None:
         self.segment_manager.clear()
+        self._segment_probe_cache.clear()
         default_container = (
             self.input_file.suffix.lstrip(".")
             if self.input_file and self.input_file.suffix
@@ -1458,17 +1648,21 @@ class MainWindow(QtWidgets.QMainWindow):
         for idx, (start, end, title) in enumerate(entries, start=1):
             description = (title or "").strip()
             fallback_name = self._generate_default_segment_name(start)
-            parts: list[str] = []
-            if add_numbering:
-                parts.append(str(idx))
-            if include_description:
-                if not description:
-                    description = fallback_name
-                parts.append(description)
-            if not parts:
-                parts.append(fallback_name)
+            if include_description and not description:
+                description = fallback_name
 
-            filename_source = "_".join(parts)
+            if add_numbering and include_description:
+                filename_source = f"{idx}{numbering_separator}{description}"
+            else:
+                parts: list[str] = []
+                if add_numbering:
+                    parts.append(str(idx))
+                if include_description:
+                    parts.append(description)
+                if not parts:
+                    parts.append(fallback_name)
+                filename_source = "_".join(parts)
+
             filename = self._sanitize_filename(filename_source)
             if not filename:
                 filename = fallback_name

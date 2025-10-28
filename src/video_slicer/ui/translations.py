@@ -31,6 +31,36 @@ TRANSLATIONS: Dict[str, Translation] = {
         "Показать подробную метаинформацию файла",
         "Show detailed file metadata",
     ),
+    "segment_metadata_column": Translation(
+        "segment_metadata_column",
+        "Метаинфо",
+        "Metadata",
+    ),
+    "segment_metadata_tooltip": Translation(
+        "segment_metadata_tooltip",
+        "Показать метаинформацию созданного сегмента",
+        "Show metadata of the exported segment",
+    ),
+    "segment_metadata_dialog_title": Translation(
+        "segment_metadata_dialog_title",
+        "Метаинформация сегмента",
+        "Segment metadata",
+    ),
+    "segment_metadata_file_label": Translation(
+        "segment_metadata_file_label",
+        "Файл сегмента: {path}",
+        "Segment file: {path}",
+    ),
+    "segment_metadata_error": Translation(
+        "segment_metadata_error",
+        "Не удалось получить метаинформацию: {error}",
+        "Failed to load metadata: {error}",
+    ),
+    "segment_metadata_missing": Translation(
+        "segment_metadata_missing",
+        "Файл сегмента не найден",
+        "Segment file not found",
+    ),
     "metadata_dialog_title": Translation(
         "metadata_dialog_title",
         "Метаинформация файла",
@@ -287,15 +317,22 @@ Additional:
     "bulk_create_description": Translation(
         "bulk_create_description",
         (
-            "Введите по одному сегменту в строке, например: 00:30 - Вступление."
-            " Можно писать через тире, пробел или оставить только время для"
-            " автоматического имени. Время указывается в формате HH:MM:SS,"
-            " MM:SS или SS."
+            "<p>Введите список сегментов, по одному в строке:</p>"
+            "<ul>"
+            "<li><b>Время</b> указывается в формате HH:MM:SS, MM:SS или SS.</li>"
+            "<li>После времени можно добавить название через тире, пробел или оставить"
+            " только время для автоматического имени.</li>"
+            "<li>Строки должны быть расположены по возрастанию времени.</li>"
+            "</ul>"
         ),
         (
-            "Enter one segment per line, e.g. 00:30 - Intro."
-            " Use a dash, a space, or only the time to auto-name segments."
-            " Supported time formats: HH:MM:SS, MM:SS or SS."
+            "<p>Enter the list of segments, one per line:</p>"
+            "<ul>"
+            "<li><b>Time</b> can be formatted as HH:MM:SS, MM:SS or SS.</li>"
+            "<li>Add the title after the time with a dash, a space, or leave only the"
+            " time to auto-generate a name.</li>"
+            "<li>Lines must be sorted in ascending order of time.</li>"
+            "</ul>"
         ),
     ),
     "bulk_create_placeholder": Translation(
@@ -377,6 +414,21 @@ Additional:
         "bulk_create_option_description",
         "Включать описание в имена файлов",
         "Include description in filenames",
+    ),
+    "bulk_create_separator_label": Translation(
+        "bulk_create_separator_label",
+        "Разделитель:",
+        "Separator:",
+    ),
+    "bulk_create_separator_placeholder": Translation(
+        "bulk_create_separator_placeholder",
+        "Например: _ или .",
+        "For example: _ or .",
+    ),
+    "bulk_create_separator_error": Translation(
+        "bulk_create_separator_error",
+        "Разделитель не должен содержать символы \\ / : * ? \" < > |",
+        "Separator cannot contain the characters \\ / : * ? \" < > |",
     ),
     "language_menu": Translation("language_menu", "Язык", "Language"),
     "language_ru": Translation("language_ru", "Русский", "Russian"),
@@ -488,6 +540,26 @@ Additional:
         "segments_cleared_log",
         "Список сегментов очищен",
         "Segment list cleared",
+    ),
+    "confirm_remove_segments_title": Translation(
+        "confirm_remove_segments_title",
+        "Удалить сегменты",
+        "Delete segments",
+    ),
+    "confirm_remove_segments_text": Translation(
+        "confirm_remove_segments_text",
+        "Будут удалены выбранные сегменты ({count}). Продолжить?",
+        "Remove the selected segments ({count})?",
+    ),
+    "confirm_clear_segments_title": Translation(
+        "confirm_clear_segments_title",
+        "Очистить список",
+        "Clear list",
+    ),
+    "confirm_clear_segments_text": Translation(
+        "confirm_clear_segments_text",
+        "Удалить все сегменты из списка?",
+        "Remove all segments from the list?",
     ),
     "processing_complete": Translation(
         "processing_complete",
