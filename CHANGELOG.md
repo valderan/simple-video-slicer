@@ -3,4 +3,8 @@
 ## [0.1.0] - 2025-10-28
 ### Added / Добавлено
 - Initial public release of Simple Video Slicer with PySide6 interface.
+- Added the ability to build an executable file for different platforms.
+
+- Добавлена возможность сборки исполняемого файла под разные платформы.
 - Первая публичная версия Simple Video Slicer с интерфейсом на PySide6.
+
