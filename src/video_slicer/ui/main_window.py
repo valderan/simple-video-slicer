@@ -12,7 +12,6 @@ from typing import List
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.segment_manager import SegmentManager
-from ..core.video_processor import VideoProcessor
 from ..models.segment import Segment
 from ..utils import ffmpeg_helper, validators
 from ..utils.settings import (
@@ -22,7 +21,9 @@ from ..utils.settings import (
     detect_system_language,
 )
 from ..utils.time_parser import format_time, parse_time
+from .bulk_segment_dialog import BulkSegmentDialog
 from .preview_dialog import PreviewDialog
+from .processing_worker import ProcessingWorker
 from .segment_dialog import SegmentDialog
 from .settings_dialog import SettingsDialog
 from .translations import Translator
@@ -44,10 +45,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_file: Path | None = None
         self.output_dir: Path | None = None
         self._file_info: dict[str, object] | None = None
+        self._probe_data: dict[str, object] | None = None
         self._stop_requested = False
         self._log_file_handler: logging.Handler | None = None
         self._ffmpeg_available = True
         self._interface_locked = False
+        self._processing_thread: QtCore.QThread | None = None
+        self._processing_worker: ProcessingWorker | None = None
 
         self.setWindowTitle("Simple Video Slicer")
         self.resize(900, 600)
@@ -140,9 +144,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_line.setReadOnly(True)
         self.file_button = QtWidgets.QPushButton()
         self.file_button.clicked.connect(self.select_input_file)
+        self.metadata_button = QtWidgets.QPushButton()
+        self.metadata_button.clicked.connect(self.show_metadata)
+        self.metadata_button.setEnabled(False)
         file_layout.addWidget(self.file_label)
         file_layout.addWidget(self.file_line)
         file_layout.addWidget(self.file_button)
+        file_layout.addWidget(self.metadata_button)
 
         self.file_info_label = QtWidgets.QLabel()
         self.file_info_label.setStyleSheet("color: #00c853;")
@@ -192,6 +200,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_button.clicked.connect(self.save_segments_to_file)
         self.load_button = QtWidgets.QPushButton()
         self.load_button.clicked.connect(self.load_segments_from_file)
+        self.generate_button = QtWidgets.QPushButton()
+        self.generate_button.clicked.connect(self.create_segments_from_text)
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.remove_button)
@@ -199,6 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout.addWidget(self.preview_button)
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.load_button)
+        button_layout.addWidget(self.generate_button)
         button_layout.addStretch()
         self.segment_buttons = [
             self.add_button,
@@ -208,6 +219,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.preview_button,
             self.save_button,
             self.load_button,
+            self.generate_button,
         ]
 
         self.progress_info_label = QtWidgets.QLabel()
@@ -272,10 +284,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def retranslate_ui(self) -> None:
         self.file_label.setText(self.translator.tr("file_label"))
         self.file_button.setText(self.translator.tr("browse"))
+        self.metadata_button.setText(self.translator.tr("metadata_button"))
         self.output_label.setText(self.translator.tr("output_label"))
         self.output_button.setText(self.translator.tr("browse"))
         self.file_button.setToolTip(self.translator.tr("tooltip_file"))
         self.output_button.setToolTip(self.translator.tr("tooltip_output"))
+        self.metadata_button.setToolTip(self.translator.tr("metadata_tooltip"))
         self.add_button.setText(self.translator.tr("add_segment"))
         self.add_button.setToolTip(self.translator.tr("tooltip_add"))
         self.edit_button.setText(self.translator.tr("edit_segment"))
@@ -290,6 +304,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_button.setToolTip(self.translator.tr("tooltip_save_segments"))
         self.load_button.setText(self.translator.tr("load_segments"))
         self.load_button.setToolTip(self.translator.tr("tooltip_load_segments"))
+        self.generate_button.setText(self.translator.tr("bulk_create_button"))
+        self.generate_button.setToolTip(self.translator.tr("bulk_create_tooltip"))
         self.process_button.setText(self.translator.tr("process"))
         self.process_button.setToolTip(self.translator.tr("tooltip_process"))
         self.stop_button.setText(self.translator.tr("stop"))
@@ -339,6 +355,8 @@ class MainWindow(QtWidgets.QMainWindow):
             enabled = False
         for button in getattr(self, "segment_buttons", []):
             button.setEnabled(enabled)
+        if hasattr(self, "metadata_button"):
+            self.metadata_button.setEnabled(enabled and self._probe_data is not None)
 
     def set_language(self, language: str) -> None:
         if language not in {"ru", "en"}:
@@ -407,11 +425,51 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QUrl("https://ffmpeg.org/download.html")
         )
 
+    def show_metadata(self) -> None:
+        if not self.input_file or not self._probe_data:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.translator.tr("info"),
+                self.translator.tr("metadata_not_available"),
+            )
+            return
+
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle(self.translator.tr("metadata_dialog_title"))
+        dialog.setModal(True)
+        dialog.resize(640, 520)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        header = QtWidgets.QLabel(
+            self.translator.tr("metadata_file_label").format(path=str(self.input_file))
+        )
+        header.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(header)
+
+        text = QtWidgets.QPlainTextEdit()
+        text.setPlainText(json.dumps(self._probe_data, ensure_ascii=False, indent=2))
+        text.setReadOnly(True)
+        layout.addWidget(text)
+
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Close
+        )
+        close_button = button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Close)
+        if close_button:
+            close_button.setText(self.translator.tr("preview_close"))
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec()
+
     def show_about(self) -> None:
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowTitle(self.translator.tr("help_about"))
         dialog.setModal(True)
-        dialog.resize(420, 320)
+        dialog.resize(420, 360)
 
         layout = QtWidgets.QVBoxLayout(dialog)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -511,6 +569,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.file_line.setToolTip(file_path)
                 logger.info("Выбран входной файл: %s", file_path)
                 probe_data = ffmpeg_helper.probe_file(self.input_file)
+                self._probe_data = probe_data
                 info = self._extract_file_info(probe_data)
                 self._file_info = info
                 self.file_info_label.setText(self._format_file_info(info))
@@ -522,6 +581,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self, self.translator.tr("error"), str(exc)
                 )
                 self._file_info = None
+                self._probe_data = None
                 self.file_info_label.setText(str(exc))
                 self.file_line.clear()
                 self.file_line.setToolTip("")
@@ -553,7 +613,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
 
     def add_segment(self) -> None:
-        dialog = SegmentDialog(self, self.translator)
+        dialog = SegmentDialog(
+            self,
+            self.translator,
+            duration=self._get_video_duration(),
+        )
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             try:
                 segment = dialog.get_segment()
@@ -584,7 +648,12 @@ class MainWindow(QtWidgets.QMainWindow):
         segment = self.segment_manager.get(row)
         if not segment:
             return
-        dialog = SegmentDialog(self, self.translator, segment)
+        dialog = SegmentDialog(
+            self,
+            self.translator,
+            segment,
+            duration=self._get_video_duration(),
+        )
         if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
             try:
                 updated = dialog.get_segment()
@@ -796,6 +865,46 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"{self.translator.tr('segments_load_error')}: {exc}",
             )
 
+    def create_segments_from_text(self) -> None:
+        if not self.input_file:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.translator.tr("error"),
+                self.translator.tr("bulk_create_no_file"),
+            )
+            return
+
+        dialog = BulkSegmentDialog(self, self.translator)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        entries = dialog.get_entries()
+        try:
+            segments_data = self._build_segments_from_entries(entries)
+        except ValueError as exc:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.translator.tr("error"),
+                str(exc),
+            )
+            return
+
+        if not segments_data:
+            return
+
+        if not self._confirm_segment_generation(
+            segments_data,
+            "bulk_create_confirm_title",
+            "bulk_create_confirm_text",
+        ):
+            return
+
+        self._apply_generated_segments(
+            segments_data,
+            "bulk_create_log",
+            "bulk_create_status",
+        )
+
     def process_segments(self) -> None:
         if not self.input_file:
             QtWidgets.QMessageBox.warning(
@@ -827,8 +936,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self, self.translator.tr("info"), self.translator.tr("no_segments")
             )
             return
-
-        processor = VideoProcessor(self.input_file, self.output_dir)
         self._stop_requested = False
         self.process_button.setEnabled(False)
         self.stop_button.setEnabled(True)
@@ -838,72 +945,115 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.status_bar.showMessage(self.translator.tr("status_processing"))
         self.log_console.clear()
-
-        was_stopped = False
-        for index, segment in enumerate(segments, start=1):
-            QtWidgets.QApplication.processEvents()
-            if self._stop_requested:
-                self._append_log(self.translator.tr("processing_stop_ack"))
-                was_stopped = True
-                break
-
-            container = segment.container or "mp4"
-            display_name = segment.filename or f"segment_{segment.index:03d}.{container}"
-            self.progress_info_label.setText(
-                self.translator.tr("progress_template").format(
-                    current=index, total=total
-                )
-            )
-            self.status_bar.showMessage(
-                self.translator.tr("status_processing_segment").format(
-                    current=index, total=total, name=display_name
-                )
-            )
-            self._append_log(
-                self.translator.tr("log_processing_segment").format(
-                    current=index, total=total, name=display_name
-                )
-            )
-
-            try:
-                processor.process_segment(segment)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Ошибка при обработке сегментов")
-                self._append_log(str(exc))
-                QtWidgets.QMessageBox.critical(
-                    self, self.translator.tr("error"), str(exc)
-                )
-                break
-
-            self.progress_bar.setValue(int(index / total * 100))
-            self._append_log(
-                self.translator.tr("log_segment_done").format(name=display_name)
-            )
-
-        else:
-            self._append_log(self.translator.tr("processing_complete"))
-            QtWidgets.QMessageBox.information(
-                self,
-                self.translator.tr("info"),
-                self.translator.tr("processing_complete"),
-            )
-
-        if was_stopped or self._stop_requested:
-            self.status_bar.showMessage(self.translator.tr("status_stopped"))
-            self.progress_info_label.setText(self.translator.tr("progress_idle"))
-            self.progress_bar.setValue(0)
-        else:
-            self.status_bar.showMessage(self.translator.tr("status_ready"))
-        self.process_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self._stop_requested = False
+        self._start_processing_worker(segments)
 
     def stop_processing(self) -> None:
         if not self.stop_button.isEnabled():
             return
         self._stop_requested = True
         self.stop_button.setEnabled(False)
+        if self._processing_worker:
+            self._processing_worker.request_stop()
         self._append_log(self.translator.tr("processing_stop_requested"))
+
+    def _start_processing_worker(self, segments: List[Segment]) -> None:
+        if not self.input_file or not self.output_dir:
+            return
+
+        if self._processing_thread:
+            self._stop_processing_thread()
+
+        self._processing_thread = QtCore.QThread(self)
+        self._processing_worker = ProcessingWorker(
+            self.input_file,
+            self.output_dir,
+            segments,
+        )
+        self._processing_worker.moveToThread(self._processing_thread)
+        self._processing_thread.started.connect(self._processing_worker.run)
+        self._processing_worker.segment_started.connect(self._on_segment_started)
+        self._processing_worker.segment_finished.connect(self._on_segment_finished)
+        self._processing_worker.progress_changed.connect(self.progress_bar.setValue)
+        self._processing_worker.error_occurred.connect(self._on_processing_error)
+        self._processing_worker.finished.connect(self._on_processing_finished)
+        self._processing_worker.stopped.connect(self._on_processing_stopped)
+        self._processing_thread.finished.connect(self._cleanup_processing_thread)
+        self._processing_thread.start()
+
+    def _on_segment_started(self, index: int, total: int, name: str) -> None:
+        self.progress_info_label.setText(
+            self.translator.tr("progress_template").format(current=index, total=total)
+        )
+        self.status_bar.showMessage(
+            self.translator.tr("status_processing_segment").format(
+                current=index, total=total, name=name
+            )
+        )
+        self._append_log(
+            self.translator.tr("log_processing_segment").format(
+                current=index, total=total, name=name
+            )
+        )
+
+    def _on_segment_finished(self, index: int, total: int, name: str) -> None:
+        self._append_log(
+            self.translator.tr("log_segment_done").format(name=name)
+        )
+        if index == total:
+            self.progress_bar.setValue(100)
+
+    def _on_processing_error(self, message: str) -> None:
+        logger.exception("Ошибка при обработке сегментов: %s", message)
+        self._append_log(message)
+        QtWidgets.QMessageBox.critical(
+            self, self.translator.tr("error"), message
+        )
+        self._finalize_processing(success=False, stopped=False)
+
+    def _on_processing_finished(self) -> None:
+        self._append_log(self.translator.tr("processing_complete"))
+        QtWidgets.QMessageBox.information(
+            self,
+            self.translator.tr("info"),
+            self.translator.tr("processing_complete"),
+        )
+        self._finalize_processing(success=True, stopped=False)
+
+    def _on_processing_stopped(self) -> None:
+        self._append_log(self.translator.tr("processing_stop_ack"))
+        self._finalize_processing(success=False, stopped=True)
+
+    def _finalize_processing(self, *, success: bool, stopped: bool) -> None:
+        if stopped:
+            self.status_bar.showMessage(self.translator.tr("status_stopped"))
+            self.progress_info_label.setText(self.translator.tr("progress_idle"))
+            self.progress_bar.setValue(0)
+        elif success:
+            self.status_bar.showMessage(self.translator.tr("status_ready"))
+            self.progress_info_label.setText(self.translator.tr("progress_idle"))
+        else:
+            self.status_bar.showMessage(self.translator.tr("status_ready"))
+            self.progress_info_label.setText(self.translator.tr("progress_idle"))
+            self.progress_bar.setValue(0)
+
+        self.process_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self._stop_requested = False
+        self._stop_processing_thread()
+
+    def _stop_processing_thread(self) -> None:
+        if self._processing_thread:
+            self._processing_thread.quit()
+            self._processing_thread.wait()
+        self._cleanup_processing_thread()
+
+    def _cleanup_processing_thread(self) -> None:
+        if self._processing_worker:
+            self._processing_worker.deleteLater()
+            self._processing_worker = None
+        if self._processing_thread:
+            self._processing_thread.deleteLater()
+            self._processing_thread = None
 
     def _append_log(self, message: str) -> None:
         timestamp = QtCore.QDateTime.currentDateTime().toString("HH:mm:ss")
@@ -928,6 +1078,14 @@ class MainWindow(QtWidgets.QMainWindow):
             "audio_codec": audio_info.get("codec_name"),
         }
         return info
+
+    def _get_video_duration(self) -> float | None:
+        if not self._file_info:
+            return None
+        value = self._file_info.get("duration")
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+        return None
 
     def _handle_metadata_chapters(self, data: dict[str, object]) -> None:
         raw_chapters = data.get("chapters")
@@ -960,14 +1118,63 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._create_segments_from_chapters(chapters)
 
-    def _prompt_create_segments_from_chapters(
-        self, chapters: list[tuple[float, float | None, str]]
+    def _build_segments_from_entries(
+        self, entries: list[tuple[float, str]]
+    ) -> list[tuple[float, float | None, str]]:
+        duration = self._get_video_duration()
+        segments: list[tuple[float, float | None, str]] = []
+
+        for idx, (start, title) in enumerate(entries, start=1):
+            if start < 0:
+                raise ValueError(
+                    self.translator.tr("bulk_create_error_negative").format(line=idx)
+                )
+            if duration is not None and start >= duration:
+                raise ValueError(
+                    self.translator.tr("bulk_create_error_over_duration").format(
+                        line=idx
+                    )
+                )
+
+            next_start = entries[idx][0] if idx < len(entries) else None
+            if next_start is not None and next_start <= start:
+                raise ValueError(
+                    self.translator.tr("bulk_create_error_order").format(line=idx + 1)
+                )
+            if duration is not None and next_start is not None and next_start > duration:
+                raise ValueError(
+                    self.translator.tr("bulk_create_error_over_duration").format(
+                        line=idx + 1
+                    )
+                )
+
+            end_value: float | None
+            if next_start is not None:
+                end_value = next_start
+            elif duration is not None:
+                if duration <= start:
+                    raise ValueError(
+                        self.translator.tr("bulk_create_error_last_segment")
+                    )
+                end_value = duration
+            else:
+                end_value = None
+
+            segments.append((start, end_value, title))
+
+        return segments
+
+    def _confirm_segment_generation(
+        self,
+        entries: list[tuple[float, float | None, str]],
+        title_key: str,
+        text_key: str,
     ) -> bool:
         message = QtWidgets.QMessageBox(self)
         message.setIcon(QtWidgets.QMessageBox.Icon.Question)
-        message.setWindowTitle(self.translator.tr("chapters_detected_title"))
+        message.setWindowTitle(self.translator.tr(title_key))
         message.setText(
-            self.translator.tr("chapters_detected_text").format(count=len(chapters))
+            self.translator.tr(text_key).format(count=len(entries))
         )
         if self.segment_manager.segments:
             message.setInformativeText(
@@ -975,7 +1182,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
         details = []
-        for idx, (start, end, title) in enumerate(chapters, start=1):
+        for idx, (start, end, title) in enumerate(entries, start=1):
             start_text = format_time(start)
             end_text = (
                 format_time(end)
@@ -998,8 +1205,11 @@ class MainWindow(QtWidgets.QMainWindow):
             no_button.setText(self.translator.tr("no"))
         return message.exec() == QtWidgets.QMessageBox.StandardButton.Yes
 
-    def _create_segments_from_chapters(
-        self, chapters: list[tuple[float, float | None, str]]
+    def _apply_generated_segments(
+        self,
+        entries: list[tuple[float, float | None, str]],
+        log_key: str,
+        status_key: str,
     ) -> None:
         self.segment_manager.clear()
         default_container = (
@@ -1007,7 +1217,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.input_file and self.input_file.suffix
             else "mp4"
         )
-        for start, end, title in chapters:
+        for start, end, title in entries:
             filename = self._sanitize_filename(title)
             segment = Segment(
                 start=start,
@@ -1018,14 +1228,30 @@ class MainWindow(QtWidgets.QMainWindow):
             self.segment_manager.add_segment(segment)
         self._refresh_table()
         self._append_log(
-            self.translator.tr("chapters_created").format(count=len(chapters))
+            self.translator.tr(log_key).format(count=len(entries))
         )
         if hasattr(self, "status_bar"):
             self.status_bar.showMessage(
-                self.translator.tr("chapters_created_status").format(
-                    count=len(chapters)
-                )
+                self.translator.tr(status_key).format(count=len(entries))
             )
+
+    def _prompt_create_segments_from_chapters(
+        self, chapters: list[tuple[float, float | None, str]]
+    ) -> bool:
+        return self._confirm_segment_generation(
+            chapters,
+            "chapters_detected_title",
+            "chapters_detected_text",
+        )
+
+    def _create_segments_from_chapters(
+        self, chapters: list[tuple[float, float | None, str]]
+    ) -> None:
+        self._apply_generated_segments(
+            chapters,
+            "chapters_created",
+            "chapters_created_status",
+        )
 
     @staticmethod
     def _sanitize_filename(value: str) -> str:
