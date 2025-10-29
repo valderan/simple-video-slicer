@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from ..utils import ffmpeg_helper
+from ..utils import ffmpeg_helper, path_utils
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,11 @@ class FormatConverter:
         if extra_args:
             args.extend(extra_args)
         args.append(str(output_file))
-        logger.info("Начата конвертация %s -> %s", input_file, output_file)
+        logger.info(
+            "Начата конвертация %s -> %s",
+            path_utils.format_for_logging(input_file),
+            path_utils.format_for_logging(output_file),
+        )
         ffmpeg_helper.run_ffmpeg(args)
         logger.info("Конвертация завершена успешно")
         return output_file
