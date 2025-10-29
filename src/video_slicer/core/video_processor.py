@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable, List
 
 from ..models.segment import Segment
-from ..utils import ffmpeg_helper
+from ..utils import ffmpeg_helper, path_utils
 from ..utils.settings import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -71,4 +71,8 @@ class VideoProcessor:
 
         logger.info("Начата обработка сегмента %s", segment.index)
         ffmpeg_helper.run_ffmpeg(args)
-        logger.info("Сегмент %s успешно сохранён в %s", segment.index, output_path)
+        logger.info(
+            "Сегмент %s успешно сохранён в %s",
+            segment.index,
+            path_utils.format_for_logging(output_path),
+        )
