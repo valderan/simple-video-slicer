@@ -832,10 +832,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 display_dir = self._format_path_for_display(validated_dir)
                 self.output_line.setText(display_dir)
                 self.output_line.setToolTip(display_dir)
-                logger.info(
-                    "Выходная директория: %s",
-                    path_utils.format_for_logging(validated_dir),
-                )
+                logger.info("Выходная директория: %s", validated_dir)
                 self.app_settings.last_output_dir = path_utils.normalize_user_path(
                     self.output_dir
                 )

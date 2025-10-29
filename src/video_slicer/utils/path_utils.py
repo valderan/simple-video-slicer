@@ -77,15 +77,4 @@ def format_for_display(path: Path | os.PathLike[str] | str | None) -> str:
     return normalized
 
 
-def format_for_logging(path: Path | os.PathLike[str] | str | None) -> str:
-    """Return an escaped representation of *path* suitable for logs."""
-
-    normalized = normalize_user_path(path)
-    if normalized is None:
-        return "\"\""
-
-    escaped = normalized.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-__all__ = ["format_for_display", "format_for_logging", "normalize_user_path"]
+__all__ = ["format_for_display", "normalize_user_path"]
