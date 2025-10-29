@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" alt="Simple Logger Logo" width="160" height=auto/>
+  <img src="logo.png" alt="SVS Logo" width="160" height=auto/>
 </p>
 
 # SVS — Simple Video Slicer
