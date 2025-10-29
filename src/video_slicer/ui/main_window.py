@@ -787,7 +787,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 display_path = self._format_path_for_display(validated_path)
                 self.file_line.setText(display_path)
                 self.file_line.setToolTip(display_path)
-                logger.info("Выбран входной файл: %s", validated_path)
+                logger.info(
+                    "Выбран входной файл: %s",
+                    path_utils.format_for_logging(validated_path),
+                )
                 probe_data = ffmpeg_helper.probe_file(self.input_file)
                 self._probe_data = probe_data
                 info = self._extract_file_info(probe_data)
@@ -1921,4 +1924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log_file_handler = handler
         self.app_settings.log_file_path = str(path)
         self.settings_manager.save(self.app_settings)
-        logger.info("Включено сохранение журнала в файл: %s", path)
+        logger.info(
+            "Включено сохранение журнала в файл: %s",
+            path_utils.format_for_logging(path),
+        )
