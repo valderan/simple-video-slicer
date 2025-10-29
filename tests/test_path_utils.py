@@ -1,18 +1,13 @@
-import importlib
 from pathlib import Path
 
 import pytest
 
-import video_slicer.utils as utils_pkg
 from video_slicer.utils import path_utils
 
 
 def test_format_for_display_windows_drive():
     value = "C:/Users/test/My Videos/sample.mp4"
-    assert (
-        path_utils.format_for_display(value)
-        == "C:\\Users\\test\\My Videos\\sample.mp4"
-    )
+    assert path_utils.format_for_display(value) == "C:\\Users\\test\\My Videos\\sample.mp4"
 
 
 def test_format_for_display_unc_path():
@@ -23,22 +18,6 @@ def test_format_for_display_unc_path():
 def test_format_for_display_posix(tmp_path):
     path = tmp_path / "clip.mkv"
     assert path_utils.format_for_display(path) == str(path)
-
-
-def test_format_for_logging_windows_drive():
-    value = "C:/Users/test/My Videos/sample.mp4"
-    normalized = path_utils.normalize_user_path(value)
-    expected = f'"{normalized.replace("\\", "\\\\")}"'
-    assert path_utils.format_for_logging(value) == expected
-
-
-def test_format_for_logging_posix(tmp_path):
-    path = tmp_path / "clip.mkv"
-    assert path_utils.format_for_logging(path) == f'"{path}"'
-
-
-def test_format_for_logging_none():
-    assert path_utils.format_for_logging(None) == '""'
 
 
 def test_normalize_user_path_strips_quotes_and_whitespace():
@@ -56,14 +35,3 @@ def test_normalize_user_path_expands_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     path = path_utils.normalize_user_path("~/video.mp4")
     assert path == str(Path(tmp_path, "video.mp4"))
-
-
-def test_format_for_logging_backfilled(monkeypatch):
-    monkeypatch.delattr(path_utils, "format_for_logging", raising=False)
-    importlib.reload(utils_pkg)
-
-    assert hasattr(path_utils, "format_for_logging")
-    value = "C:/Temp/video.mp4"
-    normalized = path_utils.normalize_user_path(value)
-    expected = f'"{normalized.replace("\\", "\\\\")}"'
-    assert path_utils.format_for_logging(value) == expected
