@@ -74,6 +74,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self._check_ffmpeg_availability(initial=True)
 
     def _create_app_icon(self) -> QtGui.QIcon:
+        icon_path = Path(__file__).resolve().parent.parent / "logo.ico"
+        pixmap = QtGui.QPixmap(str(icon_path))
+
+        if pixmap.isNull():
+            return self._create_fallback_app_icon()
+
+        icon = QtGui.QIcon()
+        for size in (16, 24, 32, 48, 64, 128, 256):
+            scaled_pixmap = pixmap.scaled(
+                size,
+                size,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            icon.addPixmap(
+                scaled_pixmap,
+                QtGui.QIcon.Mode.Normal,
+                QtGui.QIcon.State.Off,
+            )
+        if icon.isNull():
+            return self._create_fallback_app_icon()
+
+        return icon
+
+    def _create_fallback_app_icon(self) -> QtGui.QIcon:
         pixmap = QtGui.QPixmap(256, 256)
         pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
@@ -682,8 +707,10 @@ class MainWindow(QtWidgets.QMainWindow):
         header_layout.setSpacing(16)
 
         logo_label = QtWidgets.QLabel()
-        logo_path = Path(__file__).resolve().parent.parent / "logo.png"
-        pixmap = QtGui.QPixmap(str(logo_path))
+        base_path = Path(__file__).resolve().parent.parent
+        pixmap = QtGui.QPixmap(str(base_path / "logo.ico"))
+        if pixmap.isNull():
+            pixmap = QtGui.QPixmap(str(base_path / "logo.png"))
         if not pixmap.isNull():
             logo_label.setPixmap(
                 pixmap.scaled(
