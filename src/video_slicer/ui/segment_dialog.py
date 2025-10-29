@@ -6,6 +6,7 @@ from dataclasses import replace
 from PySide6 import QtCore, QtWidgets
 
 from ..models.segment import Segment
+from ..utils import path_utils
 from ..utils.time_parser import format_time, parse_time
 from .translations import Translator
 
@@ -216,7 +217,7 @@ class SegmentDialog(QtWidgets.QDialog):
         start_time = parse_time(self.start_edit.text())
         end_text = self.end_edit.text().strip()
         end_time = parse_time(end_text) if end_text else None
-        filename = self.filename_edit.text().strip() or None
+        filename = path_utils.normalize_user_path(self.filename_edit.text())
         container = self.format_combo.currentText()
         convert = self.convert_checkbox.isChecked()
 

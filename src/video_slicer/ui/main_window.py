@@ -13,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..core.segment_manager import SegmentManager
 from ..models.segment import Segment
-from ..utils import ffmpeg_helper, validators
+from ..utils import ffmpeg_helper, path_utils, validators
 from ..utils.settings import (
     AppSettings,
     SettingsManager,
@@ -125,8 +125,8 @@ class MainWindow(QtWidgets.QMainWindow):
         return QtGui.QIcon(pixmap)
 
     @staticmethod
-    def _format_path_for_display(path: Path | str) -> str:
-        return QtCore.QDir.toNativeSeparators(str(path))
+    def _format_path_for_display(path: Path | str | None) -> str:
+        return path_utils.format_for_display(path)
 
     def _create_actions(self) -> None:
         self.settings_action = QtGui.QAction()
@@ -594,7 +594,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout = QtWidgets.QVBoxLayout(dialog)
         header = QtWidgets.QLabel(
-            self.translator.tr("metadata_file_label").format(path=str(self.input_file))
+            self.translator.tr("metadata_file_label").format(
+                path=self._format_path_for_display(self.input_file)
+            )
         )
         header.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
@@ -653,7 +655,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(dialog)
         header = QtWidgets.QLabel(
             self.translator.tr("segment_metadata_file_label").format(
-                path=str(resolved_path)
+                path=self._format_path_for_display(resolved_path)
             )
         )
         header.setTextInteractionFlags(
@@ -792,7 +794,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._file_info = info
                 self.file_info_label.setText(self._format_file_info(info))
                 self._handle_metadata_chapters(probe_data)
-                self.app_settings.last_input_dir = str(self.input_file.parent)
+                self.app_settings.last_input_dir = path_utils.normalize_user_path(
+                    self.input_file.parent
+                )
                 self.settings_manager.save(self.app_settings)
             except Exception as exc:  # noqa: BLE001
                 QtWidgets.QMessageBox.critical(
@@ -826,7 +830,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.output_line.setText(display_dir)
                 self.output_line.setToolTip(display_dir)
                 logger.info("Выходная директория: %s", validated_dir)
-                self.app_settings.last_output_dir = str(self.output_dir)
+                self.app_settings.last_output_dir = path_utils.normalize_user_path(
+                    self.output_dir
+                )
                 self.settings_manager.save(self.app_settings)
                 self._segment_probe_cache.clear()
                 self._refresh_table(preserve_selection=True)
@@ -1050,9 +1056,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.input_file and self.input_file.suffix:
             default_container = self.input_file.suffix.lstrip(".") or default_container
         for row, segment in enumerate(self.segment_manager.segments):
+            filename_display = (
+                self._format_path_for_display(segment.filename)
+                if segment.filename
+                else ""
+            )
             items = [
                 QtWidgets.QTableWidgetItem(str(segment.index)),
-                QtWidgets.QTableWidgetItem(segment.filename or ""),
+                QtWidgets.QTableWidgetItem(filename_display),
                 QtWidgets.QTableWidgetItem(format_time(segment.start)),
                 QtWidgets.QTableWidgetItem(
                     "" if segment.end is None else format_time(segment.end)
@@ -1193,17 +1204,23 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         try:
-            target = Path(filename).expanduser()
+            normalized_target = path_utils.normalize_user_path(filename)
+            if not normalized_target:
+                return
+            target = Path(normalized_target).expanduser()
             payload = []
             for segment in self.segment_manager.segments:
-                payload.append(
-                    {
-                        "start_time": format_time(segment.start),
-                        "end_time": ""
-                        if segment.end is None
-                        else format_time(segment.end),
-                        "filename": segment.filename or "",
-                        "format": segment.container,
+                        payload.append(
+                            {
+                                "start_time": format_time(segment.start),
+                                "end_time": ""
+                                if segment.end is None
+                                else format_time(segment.end),
+                                "filename": path_utils.normalize_user_path(
+                                    segment.filename
+                                )
+                                or "",
+                                "format": segment.container,
                         "convert": segment.convert,
                         "video_codec": segment.video_codec,
                         "audio_codec": segment.audio_codec,
@@ -1250,7 +1267,10 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         try:
-            source = Path(filename).expanduser()
+            normalized_source = path_utils.normalize_user_path(filename)
+            if not normalized_source:
+                return
+            source = Path(normalized_source).expanduser()
             with open(source, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
             if not isinstance(data, list):
@@ -1264,10 +1284,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 end_value = entry.get("end_time")
                 start_time = parse_time(str(start_value))
                 end_time = parse_time(str(end_value)) if end_value else None
+                filename_value = path_utils.normalize_user_path(
+                    entry.get("filename") or None
+                )
                 segment = Segment(
                     start=start_time,
                     end=end_time,
-                    filename=(entry.get("filename") or None),
+                    filename=filename_value,
                     container=entry.get("format") or entry.get("container") or "mp4",
                     convert=bool(entry.get("convert", False)),
                     video_codec=entry.get("video_codec", "copy"),

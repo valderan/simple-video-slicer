@@ -8,6 +8,7 @@ from PySide6 import QtCore
 
 from ..core.video_processor import VideoProcessor
 from ..models.segment import Segment
+from ..utils import path_utils
 from ..utils.settings import AppSettings
 
 
@@ -57,10 +58,10 @@ class ProcessingWorker(QtCore.QObject):
                 return
 
             container = segment.container or self._input_file.suffix.lstrip(".") or "mp4"
-            display_name = (
-                segment.filename
-                or f"segment_{segment.index:03d}.{container}"
-            )
+            if segment.filename:
+                display_name = path_utils.format_for_display(segment.filename)
+            else:
+                display_name = f"segment_{segment.index:03d}.{container}"
             self.segment_started.emit(index, total, display_name)
 
             try:

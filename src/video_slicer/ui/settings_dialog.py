@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..utils import ffmpeg_helper
+from ..utils import ffmpeg_helper, path_utils
 from ..utils.settings import AppSettings, default_log_file
 from .translations import Translator
 
@@ -180,6 +180,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _normalize_path_value(value: str) -> str | None:
-        if not value:
+        normalized = path_utils.normalize_user_path(value)
+        if not normalized:
             return None
-        return str(Path(value).expanduser())
+        return str(Path(normalized).expanduser())
