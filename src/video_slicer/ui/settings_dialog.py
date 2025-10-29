@@ -42,7 +42,11 @@ class SettingsDialog(QtWidgets.QDialog):
         if index >= 0:
             self.theme_combo.setCurrentIndex(index)
 
-        self.ffmpeg_edit = QtWidgets.QLineEdit(self._settings.ffmpeg_path or "")
+        self.ffmpeg_edit = QtWidgets.QLineEdit(
+            self._native_path(self._settings.ffmpeg_path)
+            if self._settings.ffmpeg_path
+            else ""
+        )
         self.ffmpeg_edit.setPlaceholderText(
             self.translator.tr("settings_ffmpeg_placeholder")
         )
@@ -61,9 +65,13 @@ class SettingsDialog(QtWidgets.QDialog):
         self.log_checkbox.setChecked(self._settings.log_to_file)
         self.log_checkbox.toggled.connect(self._toggle_log_widgets)
 
-        self.log_path_edit = QtWidgets.QLineEdit(self._settings.log_file_path or "")
+        self.log_path_edit = QtWidgets.QLineEdit(
+            self._native_path(self._settings.log_file_path)
+            if self._settings.log_file_path
+            else ""
+        )
         self.log_path_edit.setPlaceholderText(
-            str(default_log_file())
+            self._native_path(str(default_log_file()))
         )
         self.log_browse = QtWidgets.QToolButton()
         self.log_browse.setText("…")
@@ -123,18 +131,18 @@ class SettingsDialog(QtWidgets.QDialog):
             self.ffmpeg_edit.text() or str(Path.home()),
         )
         if filename:
-            self.ffmpeg_edit.setText(filename)
+            self.ffmpeg_edit.setText(self._native_path(filename))
 
     def _detect_ffmpeg(self) -> None:
         try_paths = [ffmpeg_helper.current_ffmpeg(), "ffmpeg"]
         for candidate in try_paths:
             path = Path(candidate)
             if path.exists():
-                self.ffmpeg_edit.setText(str(path))
+                self.ffmpeg_edit.setText(self._native_path(str(path)))
                 return
         found = QtCore.QStandardPaths.findExecutable("ffmpeg")
         if found:
-            self.ffmpeg_edit.setText(found)
+            self.ffmpeg_edit.setText(self._native_path(found))
 
     def _choose_log_file(self) -> None:
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -144,24 +152,34 @@ class SettingsDialog(QtWidgets.QDialog):
             "Log files (*.log *.txt);;All files (*)",
         )
         if filename:
-            self.log_path_edit.setText(filename)
+            self.log_path_edit.setText(self._native_path(filename))
 
     def _toggle_log_widgets(self, enabled: bool) -> None:
         self.log_path_edit.setEnabled(enabled)
         self.log_browse.setEnabled(enabled)
         if enabled and not self.log_path_edit.text():
-            self.log_path_edit.setText(str(default_log_file()))
+            self.log_path_edit.setText(self._native_path(str(default_log_file())))
 
     def get_settings(self) -> AppSettings:
         result = self._settings.clone()
         result.language = self.language_combo.currentData()
         result.theme = self.theme_combo.currentData()
         ffmpeg_path = self.ffmpeg_edit.text().strip()
-        result.ffmpeg_path = ffmpeg_path or None
+        result.ffmpeg_path = self._normalize_path_value(ffmpeg_path)
         result.log_to_file = self.log_checkbox.isChecked()
         log_path = self.log_path_edit.text().strip()
-        result.log_file_path = log_path or None
+        result.log_file_path = self._normalize_path_value(log_path)
         result.strip_metadata = self.strip_metadata_checkbox.isChecked()
         result.embed_svs_metadata = self.embed_metadata_checkbox.isChecked()
         result.use_icon_buttons = self.icon_buttons_checkbox.isChecked()
         return result
+
+    @staticmethod
+    def _native_path(path: str) -> str:
+        return QtCore.QDir.toNativeSeparators(path)
+
+    @staticmethod
+    def _normalize_path_value(value: str) -> str | None:
+        if not value:
+            return None
+        return str(Path(value).expanduser())

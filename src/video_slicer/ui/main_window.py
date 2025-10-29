@@ -74,6 +74,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._check_ffmpeg_availability(initial=True)
 
     def _create_app_icon(self) -> QtGui.QIcon:
+        icon_path = Path(__file__).resolve().parent.parent / "logo.ico"
+        if icon_path.exists():
+            icon = QtGui.QIcon(str(icon_path))
+            if not icon.isNull():
+                return icon
+
         pixmap = QtGui.QPixmap(256, 256)
         pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
@@ -117,6 +123,10 @@ class MainWindow(QtWidgets.QMainWindow):
         painter.end()
 
         return QtGui.QIcon(pixmap)
+
+    @staticmethod
+    def _format_path_for_display(path: Path | str) -> str:
+        return QtCore.QDir.toNativeSeparators(str(path))
 
     def _create_actions(self) -> None:
         self.settings_action = QtGui.QAction()
@@ -682,17 +692,21 @@ class MainWindow(QtWidgets.QMainWindow):
         header_layout.setSpacing(16)
 
         logo_label = QtWidgets.QLabel()
-        logo_path = Path(__file__).resolve().parent.parent / "logo.png"
-        pixmap = QtGui.QPixmap(str(logo_path))
-        if not pixmap.isNull():
-            logo_label.setPixmap(
-                pixmap.scaled(
+        logo_path = Path(__file__).resolve().parent.parent / "logo.ico"
+        icon = QtGui.QIcon(str(logo_path))
+        pixmap = icon.pixmap(96, 96)
+        if pixmap.isNull():
+            fallback = Path(__file__).resolve().parent.parent / "logo.png"
+            pixmap = QtGui.QPixmap(str(fallback))
+            if not pixmap.isNull():
+                pixmap = pixmap.scaled(
                     96,
                     96,
                     QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                     QtCore.Qt.TransformationMode.SmoothTransformation,
                 )
-            )
+        if not pixmap.isNull():
+            logo_label.setPixmap(pixmap)
             logo_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             header_layout.addWidget(logo_label)
 
@@ -766,11 +780,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if file_path:
             try:
-                validators.validate_input_file(file_path)
-                self.input_file = Path(file_path)
-                self.file_line.setText(file_path)
-                self.file_line.setToolTip(file_path)
-                logger.info("Выбран входной файл: %s", file_path)
+                validated_path = validators.validate_input_file(file_path)
+                self.input_file = validated_path
+                display_path = self._format_path_for_display(validated_path)
+                self.file_line.setText(display_path)
+                self.file_line.setToolTip(display_path)
+                logger.info("Выбран входной файл: %s", validated_path)
                 probe_data = ffmpeg_helper.probe_file(self.input_file)
                 self._probe_data = probe_data
                 info = self._extract_file_info(probe_data)
@@ -805,9 +820,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if directory:
             try:
-                self.output_dir = validators.validate_output_dir(directory)
-                self.output_line.setText(str(self.output_dir))
-                logger.info("Выходная директория: %s", self.output_dir)
+                validated_dir = validators.validate_output_dir(directory)
+                self.output_dir = validated_dir
+                display_dir = self._format_path_for_display(validated_dir)
+                self.output_line.setText(display_dir)
+                self.output_line.setToolTip(display_dir)
+                logger.info("Выходная директория: %s", validated_dir)
                 self.app_settings.last_output_dir = str(self.output_dir)
                 self.settings_manager.save(self.app_settings)
                 self._segment_probe_cache.clear()
@@ -1168,13 +1186,14 @@ class MainWindow(QtWidgets.QMainWindow):
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             self.translator.tr("save_segments"),
-            str(initial),
+            self._format_path_for_display(initial),
             filters,
         )
         if not filename:
             return
 
         try:
+            target = Path(filename).expanduser()
             payload = []
             for segment in self.segment_manager.segments:
                 payload.append(
@@ -1192,7 +1211,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         "extra_params": segment.extra_args,
                     }
                 )
-            with open(filename, "w", encoding="utf-8") as handle:
+            with open(target, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
             QtWidgets.QMessageBox.information(
                 self,
@@ -1213,7 +1232,8 @@ class MainWindow(QtWidgets.QMainWindow):
             or self.app_settings.last_input_dir
             or (str(self.output_dir) if self.output_dir else None)
         )
-        initial = default_dir or str(Path.home())
+        initial_path = Path(default_dir) if default_dir else Path.home()
+        initial = self._format_path_for_display(initial_path)
         filters = ";;".join(
             [
                 self.translator.tr("segments_file_filter"),
@@ -1230,7 +1250,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         try:
-            with open(filename, "r", encoding="utf-8") as handle:
+            source = Path(filename).expanduser()
+            with open(source, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
             if not isinstance(data, list):
                 raise ValueError("Invalid segments format")
