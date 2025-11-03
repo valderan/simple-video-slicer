@@ -731,7 +731,7 @@ class MainWindow(QtWidgets.QMainWindow):
         title_layout.addWidget(title_label)
 
         version_label = QtWidgets.QLabel(
-            self.translator.tr("about_version").format(version="0.1")
+            self.translator.tr("about_version").format(version="0.1.1")
         )
         title_layout.addWidget(version_label)
 
