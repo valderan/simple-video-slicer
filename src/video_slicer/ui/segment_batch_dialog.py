@@ -38,6 +38,9 @@ class SegmentBatchDialog(QtWidgets.QDialog):
             if index >= 0:
                 self.format_combo.setCurrentIndex(index)
 
+        self.remove_audio_checkbox = QtWidgets.QCheckBox()
+        self.remove_audio_checkbox.setChecked(reference.remove_audio)
+
         self.convert_checkbox = QtWidgets.QCheckBox()
         self.convert_checkbox.setChecked(reference.convert)
         self.convert_checkbox.toggled.connect(self._toggle_conversion_group)
@@ -62,6 +65,8 @@ class SegmentBatchDialog(QtWidgets.QDialog):
             if index >= 0:
                 combo.setCurrentIndex(index)
 
+        self.remove_audio_checkbox.toggled.connect(self._update_audio_controls)
+
         conversion_layout.addRow(
             self._translator.tr("video_codec"),
             self.video_codec_combo,
@@ -82,6 +87,10 @@ class SegmentBatchDialog(QtWidgets.QDialog):
 
         form_layout = QtWidgets.QFormLayout()
         form_layout.addRow(self._translator.tr("format"), self.format_combo)
+        form_layout.addRow(
+            self._translator.tr("remove_audio_label"),
+            self.remove_audio_checkbox,
+        )
         form_layout.addRow(self._translator.tr("convert"), self.convert_checkbox)
 
         self.button_box = QtWidgets.QDialogButtonBox(
@@ -110,6 +119,14 @@ class SegmentBatchDialog(QtWidgets.QDialog):
 
     def _toggle_conversion_group(self, enabled: bool) -> None:
         self.conversion_group.setEnabled(enabled)
+        self._update_audio_controls()
+
+    def _update_audio_controls(self) -> None:
+        audio_enabled = (
+            self.convert_checkbox.isChecked()
+            and not self.remove_audio_checkbox.isChecked()
+        )
+        self.audio_codec_combo.setEnabled(audio_enabled)
 
     def _retranslate_dynamic(self) -> None:
         hint = self._translator.tr("extra_hint")
@@ -117,10 +134,14 @@ class SegmentBatchDialog(QtWidgets.QDialog):
         self.extra_args_edit.setToolTip(hint)
         self.convert_checkbox.setText(self._translator.tr("convert_checkbox"))
         self.conversion_group.setTitle(self._translator.tr("conversion_settings"))
+        self.remove_audio_checkbox.setText(
+            self._translator.tr("remove_audio_checkbox")
+        )
 
-    def get_result(self) -> tuple[str, bool, str, str, int, str]:
+    def get_result(self) -> tuple[str, bool, bool, str, str, int, str]:
         container = self.format_combo.currentText()
         convert = self.convert_checkbox.isChecked()
+        remove_audio = self.remove_audio_checkbox.isChecked()
         video_codec = self.video_codec_combo.currentText()
         audio_codec = self.audio_codec_combo.currentText()
         crf = self.crf_spin.value()
@@ -129,4 +150,12 @@ class SegmentBatchDialog(QtWidgets.QDialog):
             video_codec = "copy"
             audio_codec = "copy"
             extra_args = ""
-        return container, convert, video_codec, audio_codec, crf, extra_args
+        return (
+            container,
+            convert,
+            remove_audio,
+            video_codec,
+            audio_codec,
+            crf,
+            extra_args,
+        )

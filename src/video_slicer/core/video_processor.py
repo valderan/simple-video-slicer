@@ -49,9 +49,12 @@ class VideoProcessor:
         args.extend(["-i", str(self.input_file)])
 
         video_codec = segment.video_codec or "copy"
-        audio_codec = segment.audio_codec or "copy"
         args.extend(["-c:v", video_codec])
-        args.extend(["-c:a", audio_codec])
+        if segment.remove_audio:
+            args.append("-an")
+        else:
+            audio_codec = segment.audio_codec or "copy"
+            args.extend(["-c:a", audio_codec])
         if segment.convert and video_codec != "copy":
             args.extend(["-crf", str(segment.crf)])
         strip_metadata = bool(getattr(self._settings, "strip_metadata", False))

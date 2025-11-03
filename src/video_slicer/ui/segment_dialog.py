@@ -53,6 +53,8 @@ class SegmentDialog(QtWidgets.QDialog):
             index = self.format_combo.findText(self.segment.container)
             if index >= 0:
                 self.format_combo.setCurrentIndex(index)
+        self.remove_audio_checkbox = QtWidgets.QCheckBox()
+        self.remove_audio_checkbox.setChecked(self.segment.remove_audio)
         self.convert_checkbox = QtWidgets.QCheckBox()
         self.convert_checkbox.setChecked(self.segment.convert)
         self.convert_checkbox.toggled.connect(self._update_conversion_state)
@@ -76,6 +78,8 @@ class SegmentDialog(QtWidgets.QDialog):
             index = combo.findText(value)
             if index >= 0:
                 combo.setCurrentIndex(index)
+
+        self.remove_audio_checkbox.toggled.connect(self._update_audio_controls)
 
         conversion_layout.addRow(self.translator.tr("video_codec"), self.video_codec_combo)
         conversion_layout.addRow(self.translator.tr("audio_codec"), self.audio_codec_combo)
@@ -102,6 +106,7 @@ class SegmentDialog(QtWidgets.QDialog):
         end_container_layout.addWidget(self.end_slider)
         form_layout.addRow(self.translator.tr("end_time"), end_container)
         form_layout.addRow(self.translator.tr("format"), self.format_combo)
+        form_layout.addRow(self.translator.tr("remove_audio_label"), self.remove_audio_checkbox)
         form_layout.addRow(self.translator.tr("convert"), self.convert_checkbox)
 
         self.button_box = QtWidgets.QDialogButtonBox(
@@ -130,6 +135,7 @@ class SegmentDialog(QtWidgets.QDialog):
         self.end_edit.setPlaceholderText(self.translator.tr("end_placeholder"))
         self.conversion_group.setTitle(self.translator.tr("conversion_settings"))
         self.convert_checkbox.setText(self.translator.tr("convert_checkbox"))
+        self.remove_audio_checkbox.setText(self.translator.tr("remove_audio_checkbox"))
         hint = self.translator.tr("extra_hint")
         self.extra_args_edit.setPlaceholderText(hint)
         self.extra_args_edit.setToolTip(hint)
@@ -142,6 +148,14 @@ class SegmentDialog(QtWidgets.QDialog):
 
     def _update_conversion_state(self, enabled: bool) -> None:
         self.conversion_group.setEnabled(enabled)
+        self._update_audio_controls()
+
+    def _update_audio_controls(self) -> None:
+        audio_enabled = (
+            self.convert_checkbox.isChecked()
+            and not self.remove_audio_checkbox.isChecked()
+        )
+        self.audio_codec_combo.setEnabled(audio_enabled)
 
     def _configure_sliders(self) -> None:
         for slider in (self.start_slider, self.end_slider):
@@ -227,6 +241,7 @@ class SegmentDialog(QtWidgets.QDialog):
         segment.container = container
         segment.convert = convert
         segment.crf = self.crf_spin.value()
+        segment.remove_audio = self.remove_audio_checkbox.isChecked()
         if convert:
             segment.video_codec = self.video_codec_combo.currentText()
             segment.audio_codec = self.audio_codec_combo.currentText()

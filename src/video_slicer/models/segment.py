@@ -19,6 +19,7 @@ class Segment:
     audio_codec: str = "copy"
     crf: int = 23
     extra_args: str = ""
+    remove_audio: bool = False
     index: int = field(default=0)
 
     def duration(self) -> Optional[float]:

@@ -16,7 +16,7 @@
 1. Click “Browse…” in the “Input video file” block and choose the source clip.
 2. Select the “Output directory” where the processed segments will be written.
 3. Add a segment with “Add segment” and specify start/end times. You can enter values in `HH:MM:SS`, `MM:SS`, or seconds.
-4. Configure processing: keep codecs on `copy` for fast lossless slicing or enable conversion and choose codecs plus CRF.
+4. Configure processing: keep codecs on `copy` for fast lossless slicing or enable conversion and choose codecs plus CRF. Tick “Remove audio track” whenever you need the output without sound.
 5. Click “Start processing” to generate segment files.
 
 ## Creating Segments from Text Descriptions

@@ -972,6 +972,7 @@ class MainWindow(QtWidgets.QMainWindow):
         (
             container,
             convert,
+            remove_audio,
             video_codec,
             audio_codec,
             crf,
@@ -982,6 +983,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             segment.container = container
             segment.convert = convert
+            segment.remove_audio = remove_audio
             segment.video_codec = video_codec
             segment.audio_codec = audio_codec
             segment.crf = crf
@@ -1217,6 +1219,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         "audio_codec": segment.audio_codec,
                         "crf": segment.crf,
                         "extra_params": segment.extra_args,
+                        "remove_audio": segment.remove_audio,
                     }
                 )
             with open(filename, "w", encoding="utf-8") as handle:
@@ -1282,6 +1285,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     extra_args=entry.get("extra_params")
                     or entry.get("extra_args")
                     or "",
+                    remove_audio=bool(entry.get("remove_audio", False)),
                 )
                 if not segment.convert:
                     segment.video_codec = "copy"

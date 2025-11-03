@@ -109,6 +109,12 @@ TRANSLATIONS: Dict[str, Translation] = {
         "Конвертировать видео",
         "Convert video",
     ),
+    "remove_audio_label": Translation("remove_audio_label", "Аудио", "Audio"),
+    "remove_audio_checkbox": Translation(
+        "remove_audio_checkbox",
+        "Удалить аудиодорожку",
+        "Remove audio track",
+    ),
     "conversion_settings": Translation(
         "conversion_settings",
         "Параметры конвертации",
